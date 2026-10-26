@@ -1,0 +1,36 @@
+name: Validate and build
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build -trimpath -o fegan-master-team${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/fegan-master-team
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fegan-master-team-${{ runner.os }}-${{ runner.arch }}
+          path: fegan-master-team*
+          if-no-files-found: error
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: sh scripts/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-binaries
+          path: dist/
