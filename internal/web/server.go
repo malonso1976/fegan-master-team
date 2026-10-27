@@ -234,29 +234,13 @@ func (s *Server) Handler() http.Handler {
 		if q.SeasonStart == 0 {
 			q.SeasonStart = domain.SeasonStartOn(time.Now())
 		}
-		v := []domain.Recommendation{}
-		pools := []int{q.Pool}
-		if q.Pool == 0 {
-			pools = []int{25, 50}
-		}
-		chronos := []string{q.Chrono}
-		if q.Chrono == "" {
-			chronos = []string{"E", "M"}
-		}
-		for _, pool := range pools {
-			for _, chrono := range chronos {
-				f := q.Filter
-				f.Pool = pool
-				f.Chrono = chrono
-				var rows []domain.Recommendation
-				rows, e = domain.Recommend(d, q.License, f)
-				if e != nil {
-					failure(w, e, 400)
-					return
-				}
-				v = append(v, rows...)
-			}
-		}
+		// Opportunity references always cover the last two years; the own best
+		// remains historical and selects a single timing per event.
+		now := time.Now()
+		q.From = now.AddDate(-2, 0, 0).Format("2006-01-02")
+		q.To = now.Format("2006-01-02")
+		q.Chrono = ""
+		v, e := domain.Recommend(d, q.License, q.Filter)
 		if e != nil {
 			failure(w, e, 400)
 			return

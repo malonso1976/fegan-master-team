@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -16,7 +17,7 @@ func adviceSquad() Data {
 	return d
 }
 func adviceRequest() RelayRequest {
-	return RelayRequest{Filter: Filter{From: "2023-01-01", To: "2026-12-31", SeasonStart: 2026, Pool: 25, Chrono: "E", VerifiedOnly: true}, ClubID: "001", Event: "4x50L", Gender: "M", Competition: "winter2627", Limit: 2}
+	return RelayRequest{Filter: Filter{From: "2023-01-01", To: "2026-12-31", SeasonStart: 2026, Pool: 25, Chrono: "E", VerifiedOnly: true}, ClubID: "001", Event: "4x50L", Gender: "M", Competition: "championship", Limit: 2}
 }
 func TestLowerCategoriesAndBestMedalReference(t *testing.T) {
 	d := adviceSquad()
@@ -90,7 +91,7 @@ func TestPremasterRestrictionAndNoInventedRecommendation(t *testing.T) {
 		t.Fatal("event outside programme accepted")
 	}
 }
-func TestWinterDateAndVerifiedConstraints(t *testing.T) {
+func TestChampionshipHistoricalDateAndVerifiedConstraints(t *testing.T) {
 	d := adviceSquad()
 	for i := range d.Marks {
 		d.Marks[i].Date = "2023-08-31"
@@ -103,7 +104,7 @@ func TestWinterDateAndVerifiedConstraints(t *testing.T) {
 	}
 	for _, g := range advice.Groups {
 		if len(g.Results) > 0 {
-			t.Fatal("outdated winter reference accepted")
+			t.Fatal("pre-accreditation reference accepted")
 		}
 	}
 	for i := range d.Marks {
@@ -116,12 +117,42 @@ func TestWinterDateAndVerifiedConstraints(t *testing.T) {
 	}
 	for _, g := range advice.Groups {
 		if len(g.Results) > 0 {
-			t.Fatal("unverified winter reference accepted")
+			t.Fatal("unverified championship reference accepted")
 		}
 	}
-	q.Competition = "league2627"
+	q.Competition = "league"
 	advice, e = RecommendRelayCategories(context.Background(), d, q)
 	if e != nil || len(advice.Groups[0].Results) != 1 {
 		t.Fatal("league approximate references rejected", e)
+	}
+}
+
+func TestRuleTypesDoNotDependOnSeasonOrCircularURL(t *testing.T) {
+	for _, season := range []int{2027, 2032} {
+		d := adviceSquad()
+		q := adviceRequest()
+		q.SeasonStart = season
+		q.To = fmt.Sprintf("%d-09-30", season+1)
+		for _, rules := range []string{ChampionshipRules, LeagueRules, ""} {
+			q.Competition = rules
+			advice, e := RecommendRelayCategories(context.Background(), d, q)
+			if e != nil || advice.Rules != rules || len(advice.Groups[0].Results) == 0 {
+				t.Fatal(season, advice, e)
+			}
+			for _, warning := range advice.Warnings {
+				if strings.Contains(warning, "2627") || strings.Contains(warning, "2026/27") || strings.Contains(warning, "https://") {
+					t.Fatal("season-specific warning", warning)
+				}
+			}
+		}
+	}
+	d := adviceSquad()
+	q := adviceRequest()
+	for i := range d.Marks {
+		d.Marks[i].Date = ChampionshipMarksSince
+	}
+	advice, e := RecommendRelayCategories(context.Background(), d, q)
+	if e != nil || len(advice.Groups[0].Results) != 1 {
+		t.Fatal("historic boundary excluded", advice, e)
 	}
 }

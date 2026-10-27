@@ -126,7 +126,7 @@ func TestAutomaticComparisonPartitionsAndRivalDetails(t *testing.T) {
 	}
 	var rows []domain.Recommendation
 	json.Unmarshal(w.Body.Bytes(), &rows)
-	if len(rows) != 2 {
+	if len(rows) != 1 {
 		t.Fatal(rows)
 	}
 	for _, row := range rows {
@@ -185,5 +185,46 @@ func TestWideImportPreparesAsynchronouslyWithoutSaving(t *testing.T) {
 	s.mu.Unlock()
 	if !exists {
 		t.Fatal("preview not retained for review")
+	}
+}
+
+func TestOpportunityAPIAlwaysUsesRecentRivalsAndHistoricalOwnTiming(t *testing.T) {
+	ctx := context.Background()
+	db, e := store.Open(filepath.Join(t.TempDir(), "team.sqlite"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	now := time.Now()
+	if e = db.SaveClub(ctx, domain.Club{ID: "001", Name: "Prueba"}); e != nil {
+		t.Fatal(e)
+	}
+	for _, l := range []string{"a", "b"} {
+		if e = db.SaveSwimmer(ctx, domain.Swimmer{License: l, Name: l, BirthYear: now.Year() - 40, Gender: "M", ClubID: "001"}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	marks := []struct {
+		l, chrono string
+		years, cs int
+	}{{"a", "M", -5, 2600}, {"a", "E", -1, 2800}, {"b", "M", -3, 2400}, {"b", "M", -1, 2700}, {"b", "E", -1, 2000}}
+	for _, x := range marks {
+		if e = db.SaveMark(ctx, domain.Mark{License: x.l, ClubID: "001", Event: "50L", Pool: 25, Chrono: x.chrono, Date: now.AddDate(x.years, 0, 0).Format("2006-01-02"), Centiseconds: x.cs, Source: "manual", Gender: "M", Verified: true}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	s := New(db, "127.0.0.1:12345")
+	defer s.Close()
+	r := httptest.NewRequest("POST", "http://"+s.Host+"/api/recommend", strings.NewReader(`{"license":"a","pool":25,"chrono":"E","from":"1900-01-01","to":"2199-01-01"}`))
+	r.Header.Set("X-CSRF-Token", s.token)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	var rows []domain.Recommendation
+	if e = json.Unmarshal(w.Body.Bytes(), &rows); e != nil || w.Code != 200 || len(rows) != 1 {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	row := rows[0]
+	if row.Time != 2600 || row.Chrono != "M" || row.Rank != 1 || len(row.Details) != 1 || row.Details[0].Mark.Centiseconds != 2700 {
+		t.Fatal(row)
 	}
 }

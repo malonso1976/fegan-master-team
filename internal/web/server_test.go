@@ -107,7 +107,7 @@ func TestSeasonRecommendationAndCategoryAPI(t *testing.T) {
 	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("45–49")) {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = call("/api/relays", `{"club_id":"001","event":"4x50L","gender":"M","season_start":2026,"from":"2025-01-01","to":"2026-12-31","pool":25,"chrono":"E","verified_only":true,"category":0,"competition":"winter2627","limit":2}`)
+	w = call("/api/relays", `{"club_id":"001","event":"4x50L","gender":"M","season_start":2026,"from":"2025-01-01","to":"2026-12-31","pool":25,"chrono":"E","verified_only":true,"category":0,"competition":"championship","limit":2}`)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

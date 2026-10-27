@@ -1,5 +1,9 @@
 # Verificación de la primera versión
 
+## Investigación de relevos, 27/10/2026
+
+Reextracción de cuatro campeonatos oficiales: 701 marcas (233 M, 172 F, 296 X), iguales a las guardadas en la base del perfil consultada exclusivamente en modo de solo lectura. Extracción independiente con pypdf: coincidencia de sexo/prueba/categoría/tiempo en los cuatro documentos/conjuntos; dos páginas de verano 2026 inspeccionadas visualmente. Ejecución aislada de markRows con datos ficticios confirma etiquetas idénticas para M/F/X. La herramienta temporal de diagnóstico se retiró; no se corrigió código ni se modificaron datos. No se repitieron compilaciones ni la batería general porque esta revisión solo añade documentación. [Informe, propuesta y límites](relay-import-investigation.md).
+
 Fecha: 26/10/2026. Entorno ejecutado: macOS arm64, Go 1.26.2 mediante el complemento estándar golang de asdf. La ruta comprobada es ~/.asdf/installs/golang/1.26.2/go/bin/go; el proyecto ya no utiliza ivm-golang. Datos de pruebas en directorios temporales; no se cargaron datos de prueba en el perfil predeterminado del usuario.
 
 ## Comprobaciones completadas
@@ -69,3 +73,18 @@ No es una certificación federativa. Se aplica la interpretación de categorías
 - Concurrencia con fuente HTTP simulada: reinicio durante consulta de catálogo, sincronización automática y preparación asíncrona de importación. Cancela y espera todas ellas sin bloqueo, elimina el estado del trabajo y evita que el catálogo o sus datos reaparezcan después.
 - Navegador macOS con base temporal ficticia: Ajustes, diálogo con recuentos y alcance, botón final deshabilitado antes de escribir REINICIAR y habilitado después. Se pulsó Cancelar y se comprobó que el club ficticio seguía guardado. El borrado se verificó en pruebas API y de persistencia con bases temporales; no se ejecutó la acción destructiva sobre la base del perfil del usuario.
 - Pruebas ordinarias, detector de carreras, análisis estático y sintaxis JavaScript correctos. Regenerados seis ejecutables y comprobadas sus sumas SHA-256; Windows/Linux siguen pendientes de ejecución nativa.
+
+## Revisión del 27/10/2026: CI, reglas y oportunidades
+
+- Metadatos de releases y manifiestos action.yml consultados en los repositorios oficiales: checkout v7.0.1, setup-go v7.0.0 y upload-artifact v7.0.2, cada uno en su SHA completo y con runs.using=node24. Workflow validado localmente con actionlint v1.7.12, sin añadir dependencias a go.mod. Los nuevos jobs no se han ejecutado en GitHub.
+- Pruebas de ChampionshipRules/LeagueRules en escenarios de temporadas 2027 y 2032 sin URLs ni advertencias ligadas a 2026/27; corte histórico inclusivo 2023-09-01 y exigencia de verificación para campeonato, aproximadas permitidas en liga según filtro.
+- Oportunidades: historial propio de 2012/2015 frente a referencias recientes; exclusión de rivales antiguos, otra piscina y cronometraje incompatible; una fila por prueba, una marca por rival, nacimiento incluido y empate propio E/M resuelto a favor de E de forma determinista. El límite inicial de la ventana reciente es inclusivo. Caso API con fechas/crono antiguos recibidos confirma que la ventana de rivales es siempre de dos años y el crono lo selecciona la propia marca histórica.
+- Consulta automática de rivales compartida: las pruebas antiguas propias generan consultas con ventana reciente, manteniendo deduplicación por grupo/prueba/piscina/crono. No se hizo una nueva consulta de red FEGAN real en esta revisión; se conserva la cobertura previamente observada y los tests usan fixtures anónimos.
+- Navegador macOS con base temporal ficticia: filtro 50 libre, mejores individuales reducidos a cuatro referencias separadas E/M, orden ascendente 20/22/26/28 y descendente, búsqueda sin acento alvaro con dos mejores propios. Búsqueda por club 002, licencia 00001 y palabras costa alvaro; selección única automática y club visible. Oportunidades 50L/100L una vez cada una, propias de 2018/2016 frente a rival de 2026, nacimiento 1985 visible. El rival antiguo de 2015 no aparece en la comparación reciente y su referencia electrónica tampoco se mezcla con la oportunidad manual.
+- go test ./..., go test -race ./..., go vet ./... y sintaxis JavaScript correctos con Go 1.26.2 del complemento golang estándar de asdf. Se regeneraron los seis ejecutables, con SHA256SUMS verificado, y se usó el binario macOS arm64 en el navegador. Ejecución nativa Windows/Linux pendiente.
+
+## Corrección de presentación de relevos (D38)
+
+- Etiqueta compartida M/F/X y categoría de edad en historial, resultados recientes y vistas previas. Verificación aislada con datos ficticios de las tres etiquetas, filtro combinado de tipo y categoría, búsqueda de mixto, vista previa y desactivación de mejores individuales al seleccionar relevos.
+- Navegador macOS sobre base temporal ficticia: tres relevos +160 distintos visibles en inicio e historial; selección sucesiva femenina, masculina y mixta muestra solo su registro. Al elegir relevos desde mejores individuales activo aparecen los tres y el checkbox queda desmarcado/deshabilitado. La base del perfil no se abrió ni modificó durante la corrección.
+- go test ./..., go test -race ./..., go vet ./... y sintaxis JavaScript correctos con Go 1.26.2 de asdf. Las pruebas HTTP necesitaron ejecución fuera del sandbox para abrir puertos locales temporales. Compilación mediante scripts/build.sh para Windows/macOS/Linux, amd64/arm64; comprobadas sumas SHA-256. Windows/Linux pendientes de ejecución nativa.

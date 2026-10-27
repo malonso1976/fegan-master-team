@@ -18,7 +18,7 @@ func RivalQueries(d domain.Data, club string, season int, now time.Time) []Query
 	queries := map[string]Query{}
 	for _, m := range d.Marks {
 		s, ok := members[m.License]
-		if !ok || domain.Relay(m.Event) || m.Date < from || m.Date > to {
+		if !ok || domain.Relay(m.Event) || m.Date > to {
 			continue
 		}
 		low, high := domain.IndividualGroup(domain.SeasonAge(season, s.BirthYear))

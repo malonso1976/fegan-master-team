@@ -4,3 +4,5 @@
 .time-bar{appearance:none;-webkit-appearance:none;border:0;border-radius:8px;overflow:hidden;background:#e8eef1}.time-bar::-webkit-progress-bar{background:#e8eef1;border-radius:8px}.time-bar::-webkit-progress-value{background:#9caeb8;border-radius:8px}.time-bar.own::-webkit-progress-value{background:var(--teal)}.time-bar::-moz-progress-bar{background:#9caeb8}.time-bar.own::-moz-progress-bar{background:var(--teal)}
 
 .destructive{border-color:#d9a79f}.destructive h2{color:#9c342c}dialog{border:1px solid #c8d5dd;border-radius:12px;padding:28px;max-width:600px;width:calc(100% - 32px);color:#172f41;box-shadow:0 16px 60px #102c4044}dialog::backdrop{background:#102c4080}.dialog-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:12px}.primary.danger{background:#a33229;border-color:#a33229;color:white}.primary.danger:hover{background:#84271f}
+
+#mark-list th button{border:0;padding:0;background:transparent;font-size:inherit;font-weight:inherit;color:inherit;text-align:left;min-height:32px;white-space:nowrap}#mark-list th[aria-sort=ascending],#mark-list th[aria-sort=descending]{color:var(--teal)}

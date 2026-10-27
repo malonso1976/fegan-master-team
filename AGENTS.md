@@ -21,3 +21,6 @@
 - En arranque normal, cerrar la última pestaña termina el proceso tras cinco segundos de margen; recargas y otras pestañas deben mantenerlo. No ligar el cierre al proceso del lanzador ni usar solo latidos JavaScript sujetos a suspensión. `-no-browser` conserva el servidor independiente. Cerrar ordenadamente HTTP, trabajos y SQLite.
 
 - Reinicio global solo tras confirmación explícita REINICIAR en interfaz y API. Detén productores y cancela peticiones de la generación antigua antes de vaciar transaccionalmente datos, historial, configuración y exclusiones; invalida vistas previas/cachés y tokens antiguos. Conserva copias externas y esquema. Prueba solo con bases temporales; nunca reinicies la base del perfil del usuario durante verificaciones.
+
+- Reglas de relevos por tipo ChampionshipRules/LeagueRules, sin URLs ni temporadas fijas en el dominio. El corte 01/09/2023 de campeonato es histórico, no cambia con el año de la temporada.
+- Oportunidades: una fila por prueba en la piscina elegida, mejor marca histórica guardada propia y rivales de dos años móviles; usar el cronometraje de la mejor propia (confirmado por usuario). No mezclar E/M; empate propio E/M prefiere E. Marcas: mejores por licencia/prueba/piscina/crono/categoría dentro de filtros, sin borrar lo oculto.

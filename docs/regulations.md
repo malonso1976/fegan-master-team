@@ -34,23 +34,29 @@ Implementación: para una categoría seleccionada, suma real al menos igual al u
 
 Guardar siempre la categoría inscrita de un resultado rival. No deducirla de su suma real, que puede no determinar la categoría elegida. Los integrantes y la suma real pueden ser desconocidos.
 
-## Diferencias entre perfiles
+## Tipos de competición, independientes de la temporada
 
-| Regla | Invierno 26-32 | Liga 26-30 |
+La aclaración del usuario de 27/10/2026 distingue `ChampionshipRules` (`championship`) y `LeagueRules` (`league`). Las URL anteriores quedan como fuentes históricas de consulta en esta documentación, sin incorporarse al código ni a las respuestas como identificadores de reglas. Tampoco se fija la temporada del cálculo a la de esas circulares.
+
+| Regla implementada | Campeonato | Liga |
 |---|---|---|
-| Relevos del programa | 4x50 libre/estilos, M/F/X | 4x50 libre/estilos, M/F/X, en sus jornadas |
-| Referencias de inscripción | Acreditadas desde 01/09/2023 | Acreditadas o aproximadas; no sin marca |
-| Participación individual | Hasta 4 pruebas, 2 por jornada | 2 por jornada |
-| Participación en relevos | Todas las pruebas de relevos | Un relevo por nadador y jornada |
-| Equipos por club | Un equipo por categoría | Un equipo por categoría |
-| Mixtos | Dos hombres y dos mujeres | Dos hombres y dos mujeres |
+| Relevos implementados | 4x50 libre/estilos, M/F/X | 4x50 libre/estilos, M/F/X |
+| Referencias | Marca verificada desde 01/09/2023 | Acreditada o aproximada, según filtro local |
+| Mixtos | Dos mujeres y dos hombres | Dos mujeres y dos hombres |
+| Alternativas | Propuestas independientes, sin planificación conjunta | Revisar el límite de un relevo por nadador/jornada |
 
-La interfaz no pide un perfil: aplica los criterios comunes de edad y elegibilidad, conserva el filtro voluntario de verificadas y agrupa resultados por piscina y cronometraje. No impone el corte de fechas del campeonato de invierno ni acredita una inscripción. Los perfiles explícitos de la API se mantienen para compatibilidad: el perfil de invierno excluye referencias anteriores a la fecha indicada y fuerza marcas verificadas; esta marca de verificación local no certifica acreditación federativa. El perfil de liga permite aproximadas salvo filtro voluntario de verificadas. No se automatiza una inscripción ni una planificación conjunta que aplique los límites por jornada: la interfaz advierte de la revisión necesaria. Tampoco se calculan puntos WAQ, récords o clasificación conjunta del club.
+El 01/09/2023 es la fecha histórica de implantación de la exigencia de marca para el campeonato, confirmada por el usuario; no representa el inicio de la temporada seleccionada ni se desplaza cada año. El filtro de fechas puede acotar más las referencias. La verificación local no acredita por sí sola una inscripción federativa.
 
-Los perfiles están versionados por la temporada de las fuentes. Si se usa otra temporada, los resultados avisan de que es una simulación con reglas 2026/27, sin presuponer la normativa histórica o futura.
+La interfaz conserva el cálculo con criterios comunes de edad y su filtro voluntario de verificadas; no pide un tipo de competición. La API permite aplicar explícitamente campeonato o liga. Los identificadores antiguos que contenían una temporada se han sustituido por los genéricos. No se automatizan inscripciones, límites conjuntos ni acreditación oficial; hay que revisar la normativa de la competición correspondiente. Mantener tipos genéricos no presume que todas las reglas futuras permanecerán sin cambios.
 
 ## Recomendación competitiva
 
 Se compara la mejor propuesta propia con la mejor marca guardada por club rival y categoría, con misma prueba, categoría M/F/X, piscina y cronometraje. Para destacar una categoría se requieren al menos tres clubes rivales comparables. Ordena primero por puesto observado y después por margen respecto al tercer rival, normalizado por el tiempo de ese rival; empates completos conservan el orden de categorías.
 
 Diferencia al tercero = estimación propia − tiempo del tercer rival. Es negativa si la estimación es más rápida. No es una probabilidad: faltan posibles inscritos y las marcas pueden pertenecer a otras fechas o alineaciones. Con menos referencias se muestran propuestas y puestos observados, pero no se inventa una recomendación de medalla.
+
+## Oportunidades individuales
+
+Se utiliza la mejor marca histórica guardada del nadador en la piscina elegida, hasta la fecha actual, incluso si pertenece a otro grupo de edad en la fecha de la prueba. Se compara con el grupo de edad actual, usando las mejores marcas de cada rival en la ventana móvil de los dos últimos años. Una fila por prueba: el cronometraje lo determina la mejor marca propia, como confirmó el usuario el 27/10/2026. No se convierten ni mezclan E/M. Si los mejores tiempos propios empatan, se prefiere electrónico; después, la fecha más reciente y un identificador estable.
+
+Se excluye la licencia propia de los rivales y se muestran hasta diez licencias rivales distintas con datos compatibles disponibles. La consulta top diez de FEGAN puede incluir al propio nadador y no se solicita automáticamente un undécimo puesto para sustituirlo. La cobertura sigue limitada a los datos cargados. El listado de Marcas puede mostrar mejores registros de cualquier nadador por prueba/piscina/crono/categoría dentro de los filtros; esa consulta histórica no impone a sus filas la ventana reciente de las oportunidades.

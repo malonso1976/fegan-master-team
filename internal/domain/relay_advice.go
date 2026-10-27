@@ -5,8 +5,12 @@ import (
 	"errors"
 )
 
-const WinterRules = "https://www.fegan.org/fegan/tprd/2627/xeral/circulares/cir_2632_cto_gal_master_inv.pdf"
-const LeagueRules = "https://www.fegan.org/fegan/tprd/2627/xeral/circulares/cir_2630_liga_gal_master.pdf"
+// Rule identifiers describe competition types, independent of yearly circular URLs.
+const ChampionshipRules = "championship"
+const LeagueRules = "league"
+
+// The accreditation requirement started on this date; it is not a rolling season cutoff.
+const ChampionshipMarksSince = "2023-09-01"
 
 type CategoryAdvice struct {
 	Category    int           `json:"category"`
@@ -16,7 +20,7 @@ type CategoryAdvice struct {
 type RelayAdvice struct {
 	Season              string           `json:"season"`
 	AgeAt               string           `json:"age_at"`
-	Source              string           `json:"source"`
+	Rules               string           `json:"rules"`
 	RecommendedCategory int              `json:"recommended_category"`
 	Groups              []CategoryAdvice `json:"groups"`
 	Warnings            []string         `json:"warnings"`
@@ -34,26 +38,22 @@ func RecommendRelayCategories(ctx context.Context, d Data, q RelayRequest) (Rela
 	}
 	switch q.Competition {
 	case "":
-		out.Source = WinterRules
-		out.Warnings = append(out.Warnings, "Criterios comunes de edad de las circulares 26-32 y 26-30. Revisa acreditación y límites de participación antes de inscribir.")
-	case "winter2627":
-		out.Source = WinterRules
-		if q.From < "2023-09-01" {
-			q.From = "2023-09-01"
+		out.Warnings = append(out.Warnings, "Criterios comunes de edad. Revisa acreditación y límites de participación de la competición antes de inscribir.")
+	case ChampionshipRules:
+		out.Rules = ChampionshipRules
+		if q.From < ChampionshipMarksSince {
+			q.From = ChampionshipMarksSince
 		}
 		q.VerifiedOnly = true
-		out.Warnings = append(out.Warnings, "Invierno: solo referencias verificadas desde 01/09/2023; revisa su acreditación oficial antes de inscribir.")
-	case "league2627":
-		out.Source = LeagueRules
+		out.Warnings = append(out.Warnings, "Campeonato: requiere marca acreditada desde 01/09/2023, fecha histórica de entrada en vigor de la exigencia. La verificación local no acredita una inscripción federativa.")
+	case LeagueRules:
+		out.Rules = LeagueRules
 		out.Warnings = append(out.Warnings, "Liga: una remuda por nadador y jornada; estas alternativas no forman una planificación conjunta.")
 	default:
-		return out, errors.New("selecciona normativa de invierno o liga 2026/27")
-	}
-	if q.SeasonStart != 2026 {
-		out.Warnings = append(out.Warnings, "Simulación: se aplican reglas publicadas para 2026/27 a otra temporada; comprueba la circular correspondiente.")
+		return out, errors.New("tipo de competición no válido: championship o league")
 	}
 	if q.Event != "4x50L" && q.Event != "4x50S" {
-		return out, errors.New("las circulares seleccionadas contemplan relevos 4x50 libre y estilos")
+		return out, errors.New("el programa de relevos implementado contempla relevos 4x50 libre y estilos")
 	}
 	out.AgeAt = ageReference(q.SeasonStart)
 	for _, category := range RelayCategories() {

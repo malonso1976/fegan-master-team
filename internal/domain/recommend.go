@@ -51,9 +51,29 @@ type Recommendation struct {
 	AgeGroup   string        `json:"age_group"`
 }
 
+// betterReference breaks ties deterministically without converting timings.
+func betterReference(a, b Mark) bool {
+	if a.Centiseconds != b.Centiseconds {
+		return a.Centiseconds < b.Centiseconds
+	}
+	if a.Chrono != b.Chrono {
+		return a.Chrono == "E"
+	}
+	if a.Date != b.Date {
+		return a.Date > b.Date
+	}
+	return a.ID < b.ID
+}
+
+// Recommend uses the swimmer's lifetime best up to To, and rivals only in
+// From..To. Each event uses the timing type of its own historical best.
 func Recommend(d Data, license string, f Filter) ([]Recommendation, error) {
-	if err := f.Validate(); err != nil {
-		return nil, err
+	check := f
+	if check.Chrono == "" {
+		check.Chrono = "E"
+	}
+	if e := check.Validate(); e != nil {
+		return nil, e
 	}
 	var target Swimmer
 	found := false
@@ -61,6 +81,7 @@ func Recommend(d Data, license string, f Filter) ([]Recommendation, error) {
 		if s.License == license {
 			target = s
 			found = true
+			break
 		}
 	}
 	if !found {
@@ -71,84 +92,62 @@ func Recommend(d Data, license string, f Filter) ([]Recommendation, error) {
 		return nil, errors.New("nadador por debajo de la edad mínima del escenario")
 	}
 	low, high := IndividualGroup(age)
-	eligible := map[string]bool{}
+	eligible := map[string]Swimmer{}
 	for _, s := range d.Swimmers {
 		a := SeasonAge(f.SeasonStart, s.BirthYear)
-		if s.Gender == target.Gender && a >= low && (high == 0 || a <= high) {
-			eligible[s.License] = true
+		if s.License != license && s.Gender == target.Gender && a >= low && (high == 0 || a <= high) {
+			eligible[s.License] = s
 		}
 	}
-	best := map[string]map[string]int{}
+	ownBest := map[string]Mark{}
 	for _, m := range d.Marks {
-		if Relay(m.Event) || !eligible[m.License] || m.Gender != target.Gender || !f.accepts(m) {
+		if m.License != license || Relay(m.Event) || m.Gender != target.Gender || m.Pool != f.Pool || m.Date > f.To || m.Centiseconds <= 0 || (f.Chrono != "" && m.Chrono != f.Chrono) || (m.Chrono != "E" && m.Chrono != "M") || (f.VerifiedOnly && !m.Verified) {
 			continue
 		}
-		if best[m.Event] == nil {
-			best[m.Event] = map[string]int{}
-		}
-		v, ok := best[m.Event][m.License]
-		if !ok || m.Centiseconds < v {
-			best[m.Event][m.License] = m.Centiseconds
+		old, ok := ownBest[m.Event]
+		if !ok || betterReference(m, old) {
+			ownBest[m.Event] = m
 		}
 	}
 	out := []Recommendation{}
-	for event, times := range best {
-		own, ok := times[license]
-		if !ok {
-			continue
+	for event, own := range ownBest {
+		comparable := f
+		comparable.Chrono = own.Chrono
+		best := map[string]Mark{}
+		for _, m := range d.Marks {
+			if _, ok := eligible[m.License]; !ok || m.Event != event || m.Gender != target.Gender || m.Centiseconds <= 0 || !comparable.accepts(m) {
+				continue
+			}
+			old, ok := best[m.License]
+			if !ok || betterReference(m, old) {
+				best[m.License] = m
+			}
 		}
-		rank, first := 1, own
-		type rival struct {
-			license string
-			time    int
-		}
-		observed := []rival{}
-		for l, t := range times {
-			observed = append(observed, rival{l, t})
+		observed := []Mark{}
+		for _, m := range best {
+			observed = append(observed, m)
 		}
 		sort.Slice(observed, func(i, j int) bool {
-			if observed[i].time != observed[j].time {
-				return observed[i].time < observed[j].time
+			if observed[i].Centiseconds != observed[j].Centiseconds {
+				return observed[i].Centiseconds < observed[j].Centiseconds
 			}
-			return observed[i].license < observed[j].license
+			return observed[i].License < observed[j].License
 		})
 		if len(observed) > 10 {
 			observed = observed[:10]
 		}
-		count := 0
-		for _, r := range observed {
-			if r.license != license {
-				count++
-				if r.time < own {
-					rank++
-				}
-			}
-			if r.time < first {
-				first = r.time
-			}
-		}
+		rank, first := 1, own.Centiseconds
 		details := []RivalDetail{}
-		bestMark := func(l string) Mark {
-			var chosen Mark
-			for _, m := range d.Marks {
-				if m.License == l && m.Event == event && f.accepts(m) && m.Gender == target.Gender && (chosen.Date == "" || m.Centiseconds < chosen.Centiseconds || (m.Centiseconds == chosen.Centiseconds && m.Date > chosen.Date)) {
-					chosen = m
-				}
+		for _, m := range observed {
+			if m.Centiseconds < own.Centiseconds {
+				rank++
 			}
-			return chosen
+			if m.Centiseconds < first {
+				first = m.Centiseconds
+			}
+			details = append(details, RivalDetail{eligible[m.License], m})
 		}
-		for _, r := range observed {
-			if r.license == license {
-				continue
-			}
-			for _, p := range d.Swimmers {
-				if p.License == r.license {
-					details = append(details, RivalDetail{p, bestMark(r.license)})
-					break
-				}
-			}
-		}
-		out = append(out, Recommendation{Event: event, Time: own, Rank: rank, Rivals: count, GapToFirst: own - first, AgeGroup: groupLabel(low, high), Pool: f.Pool, Chrono: f.Chrono, Details: details, OwnMark: bestMark(license)})
+		out = append(out, Recommendation{Details: details, OwnMark: own, Pool: f.Pool, Chrono: own.Chrono, Event: event, Time: own.Centiseconds, Rank: rank, Rivals: len(observed), GapToFirst: own.Centiseconds - first, AgeGroup: groupLabel(low, high)})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]

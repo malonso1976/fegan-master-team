@@ -18,11 +18,11 @@ func TestRivalQueriesSharedGroupsAndRollingWindow(t *testing.T) {
 	old.Date = "2024-10-25"
 	d.Marks = append(d.Marks, old)
 	queries := RivalQueries(d, "001", 2026, now)
-	if len(queries) != 2 {
+	if len(queries) != 3 {
 		t.Fatal(queries)
 	}
 	for _, q := range queries {
-		if !q.TopTen || q.From != "2024-10-26" || q.To != "2026-10-26" || q.Event != "50L" {
+		if !q.TopTen || q.From != "2024-10-26" || q.To != "2026-10-26" || (q.Event != "50L" && q.Event != "100L") {
 			t.Fatal(q)
 		}
 		if q.BirthTo == 1987 && q.BirthFrom != 1983 {

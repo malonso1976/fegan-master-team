@@ -23,7 +23,7 @@ Una vez compilada no requiere instalar Go ni una base de datos. Funciona sin con
 1. Selecciona primero tu club del catálogo FEGAN de la temporada actual, con código y nombres corto/medio.
 2. La aplicación carga en segundo plano sus marcas de los dos últimos años, los diez mejores rivales por grupo y prueba, y los relevos de invierno/verano de las dos últimas temporadas con resultados. El progreso y cualquier incidencia permanecen visibles.
 3. Añade manualmente resultados ausentes, incluidos relevos de clubes rivales por categoría de edad. También puedes subir PDF locales de campeonatos y revisar sus marcas antes de guardarlas, sin conexión.
-4. Compara pruebas y calcula relevos con integrantes disponibles, detalle de rivales y grupos comparables separados.
+4. Ordena y filtra marcas por prueba, categoría y tipo individual/relevo; los relevos distinguen masculino, femenino y mixto. Consulta mejores registros por nadador y compara una oportunidad por prueba: mejor histórica propia frente a rivales de dos años, con piscina y cronometraje compatibles. Calcula relevos con integrantes disponibles y tipos de reglas independientes de temporada.
 5. Para empezar de nuevo, usa Ajustes → Reiniciar base de datos y confirma escribiendo REINICIAR.
 6. Gestiona por separado clubes y nadadores; los borrados incluyen marcas dependientes y requieren confirmación. Descarga una copia SQLite desde la barra lateral.
 
@@ -46,6 +46,7 @@ El script genera ejecutables para Windows, macOS y Linux, amd64/arm64, en `dist/
 - [Guía técnica y API](docs/technical.md)
 - [Decisiones y dudas](docs/decisions.md)
 - [Reglas de temporada y relevos](docs/regulations.md)
+- [Investigación de la presentación de relevos](docs/relay-import-investigation.md)
 - [Referencia Java y diferencias](docs/java-reference.md)
 
 Aplicación independiente; FEGAN es la fuente externa de los resultados importados. No se incluyen datos personales de muestra.
