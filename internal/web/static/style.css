@@ -6,3 +6,12 @@
 .destructive{border-color:#d9a79f}.destructive h2{color:#9c342c}dialog{border:1px solid #c8d5dd;border-radius:12px;padding:28px;max-width:600px;width:calc(100% - 32px);color:#172f41;box-shadow:0 16px 60px #102c4044}dialog::backdrop{background:#102c4080}.dialog-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:12px}.primary.danger{background:#a33229;border-color:#a33229;color:white}.primary.danger:hover{background:#84271f}
 
 #mark-list th button{border:0;padding:0;background:transparent;font-size:inherit;font-weight:inherit;color:inherit;text-align:left;min-height:32px;white-space:nowrap}#mark-list th[aria-sort=ascending],#mark-list th[aria-sort=descending]{color:var(--teal)}
+
+.form-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px}
+.grid{align-items:start}.grid>label{min-width:0;margin-bottom:0}
+.grid .field-label{display:flex;align-items:flex-end;min-height:36px}
+.grid>.check{align-self:start;margin-top:42px;margin-bottom:0;min-height:42px}
+.check input{flex:0 0 18px;height:18px}.grid input,.grid select{min-width:0}
+@media(max-width:480px){.grid{grid-template-columns:1fr}.grid .field-label{min-height:0}.grid>.check{margin-top:0}}
+
+.selection-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:18px 0}.selection-actions .check{margin:0}.selection-actions p{flex-basis:100%;margin:0}input[data-select-member]{width:18px;min-height:18px;height:18px;margin:3px 0;accent-color:var(--teal)}

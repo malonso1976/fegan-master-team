@@ -178,6 +178,8 @@ type RelayRequest struct {
 	Limit       int    `json:"limit"`
 }
 type Leg struct {
+	Chrono  string `json:"chrono"`
+	Date    string `json:"date"`
 	License string `json:"license"`
 	Name    string `json:"name"`
 	Event   string `json:"event"`
@@ -193,13 +195,7 @@ type RelayResult struct {
 	GapToPodium *int  `json:"gap_to_podium"`
 }
 
-func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error) {
-	if err := q.Filter.Validate(); err != nil {
-		return nil, err
-	}
-	if !Relay(q.Event) || !ValidEvent(q.Event) || !ValidID(q.ClubID) || (q.Gender != "M" && q.Gender != "F" && q.Gender != "X") || q.MinTotal < 0 || q.MaxTotal < q.MinTotal || q.MaxTotal > 500 || q.MinAge < 18 || q.Limit < 1 || q.Limit > 20 {
-		return nil, errors.New("configuración de relevo no válida")
-	}
+func relayCandidates(d Data, q RelayRequest) ([4][]Leg, []string) {
 	// The four events are in race order: backstroke, breaststroke, butterfly, freestyle.
 	distance := strings.TrimSuffix(strings.TrimPrefix(q.Event, "4x"), "L")
 	styles := []string{"L", "L", "L", "L"}
@@ -213,18 +209,18 @@ func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error
 			swimmers[s.License] = s
 		}
 	}
-	best := map[string]map[string]int{}
+	best := map[string]map[string]Mark{}
 	for _, m := range d.Marks {
 		s, ok := swimmers[m.License]
-		if !ok || m.Gender != s.Gender || !q.Filter.accepts(m) || Relay(m.Event) {
+		if !ok || m.Gender != s.Gender || !relayAccepts(q.Filter, m) || Relay(m.Event) {
 			continue
 		}
 		if best[m.License] == nil {
-			best[m.License] = map[string]int{}
+			best[m.License] = map[string]Mark{}
 		}
 		old, ok := best[m.License][m.Event]
-		if !ok || m.Centiseconds < old {
-			best[m.License][m.Event] = m.Centiseconds
+		if !ok || betterReference(m, old) {
+			best[m.License][m.Event] = m
 		}
 	}
 	var candidates [4][]Leg
@@ -232,7 +228,7 @@ func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error
 		event := distance + style
 		for l, s := range swimmers {
 			if t, ok := best[l][event]; ok {
-				candidates[i] = append(candidates[i], Leg{l, s.Name, event, t, SeasonAge(q.SeasonStart, s.BirthYear)})
+				candidates[i] = append(candidates[i], Leg{License: l, Name: s.Name, Event: event, Time: t.Centiseconds, Age: SeasonAge(q.SeasonStart, s.BirthYear), Chrono: t.Chrono, Date: t.Date})
 			}
 		}
 		sort.Slice(candidates[i], func(a, b int) bool {
@@ -242,6 +238,21 @@ func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error
 			}
 			return x.License < y.License
 		})
+	}
+	return candidates, styles
+}
+
+func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error) {
+	if err := validateRelayFilter(q.Filter); err != nil {
+		return nil, err
+	}
+	if !Relay(q.Event) || !ValidEvent(q.Event) || !ValidID(q.ClubID) || (q.Gender != "M" && q.Gender != "F" && q.Gender != "X") || q.MinTotal < 0 || q.MaxTotal < q.MinTotal || q.MaxTotal > 500 || q.MinAge < 18 || q.Limit < 1 || q.Limit > 20 {
+		return nil, errors.New("configuración de relevo no válida")
+	}
+	candidates, styles := relayCandidates(d, q)
+	genders := map[string]string{}
+	for _, swimmer := range d.Swimmers {
+		genders[swimmer.License] = swimmer.Gender
 	}
 	out := []RelayResult{}
 	used := map[string]bool{}
@@ -293,7 +304,7 @@ func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error
 			used[leg.License] = true
 			legs = append(legs, leg)
 			female := 0
-			if swimmers[leg.License].Gender == "F" {
+			if genders[leg.License] == "F" {
 				female = 1
 			}
 			if err := search(depth+1, total+leg.Time, age+leg.Age, females+female); err != nil {
@@ -307,20 +318,11 @@ func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error
 	if err := search(0, 0, 0, 0); err != nil {
 		return nil, err
 	}
-	rivals := map[string]int{}
-	for _, m := range d.Marks {
-		if m.ClubID != q.ClubID && m.Event == q.Event && m.Gender == q.Gender && m.RelayCategory == q.Category && q.Filter.accepts(m) {
-			old, ok := rivals[m.ClubID]
-			if !ok || m.Centiseconds < old {
-				rivals[m.ClubID] = m.Centiseconds
-			}
-		}
+	rivals := comparableRelayRivals(d, q)
+	rivalTimes := make([]int, len(rivals))
+	for i, rival := range rivals {
+		rivalTimes[i] = rival.Mark.Centiseconds
 	}
-	rivalTimes := []int{}
-	for _, v := range rivals {
-		rivalTimes = append(rivalTimes, v)
-	}
-	sort.Ints(rivalTimes)
 	for i := range out {
 		if len(rivalTimes) >= 3 {
 			gap := out[i].Total - rivalTimes[2]
@@ -328,7 +330,7 @@ func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error
 		}
 		out[i].Rivals = len(rivals)
 		out[i].Rank = 1
-		for _, t := range rivals {
+		for _, t := range rivalTimes {
 			if t < out[i].Total {
 				out[i].Rank++
 			}

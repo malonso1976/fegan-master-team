@@ -131,3 +131,46 @@ func TestTopTenFallsBackToFilteredHistory(t *testing.T) {
 		t.Fatal(p, calls, e)
 	}
 }
+
+func TestTenYearLicenseHistoryIncludesOldClub(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/results.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture = []byte(strings.ReplaceAll(string(fixture), "20260613", "20180613"))
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		for key, want := range map[string]string{"combo_club": "", "input_license": "00001", "input_from_date": "2016-10-27", "input_to_date": "2026-10-27", "combo_chrono": "E", "combo_pool": "25"} {
+			if r.Form.Get(key) != want {
+				t.Errorf("wrong history filter %s", key)
+			}
+		}
+		w.Write(fixture)
+	}))
+	defer remote.Close()
+	c := New()
+	c.URL = remote.URL
+	c.HTTP = remote.Client()
+	q := query()
+	q.ClubID = ""
+	q.License = "00001"
+	q.From = "2016-10-27"
+	q.To = "2026-10-27"
+	q.Member = false
+	p, err := c.Preview(context.Background(), q)
+	if err != nil || len(p.Data.Marks) != 1 || p.Data.Marks[0].Date != "2018-06-13" || p.Data.Marks[0].ClubID != "00123" || p.Data.Marks[0].License != "00001" || p.Data.Swimmers[0].Member {
+		t.Fatal("history unavailable or identity changed", err)
+	}
+	q.Event = "all"
+	q.Pool = 0
+	q.Chrono = ""
+	queries, err := ExpandQuery(q)
+	if err != nil || len(queries) != 4 {
+		t.Fatal(queries, err)
+	}
+	for _, q := range queries {
+		if q.ClubID != "" || q.License != "00001" || q.From != "2016-10-27" || q.To != "2026-10-27" || q.Member {
+			t.Fatal("lost history scope")
+		}
+	}
+}

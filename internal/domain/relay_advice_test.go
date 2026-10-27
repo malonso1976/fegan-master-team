@@ -156,3 +156,241 @@ func TestRuleTypesDoNotDependOnSeasonOrCircularURL(t *testing.T) {
 		t.Fatal("historic boundary excluded", advice, e)
 	}
 }
+
+func TestRelayRivalsRemainVisibleWithoutElectronicSquad(t *testing.T) {
+	for _, gender := range []string{"M", "F"} {
+		t.Run(gender, func(t *testing.T) {
+			d := adviceSquad()
+			for i := range d.Swimmers {
+				d.Swimmers[i].Gender = gender
+				d.Marks[i].Gender = gender
+			}
+			d.Marks[3].Chrono = "M" // Four swimmers overall, only three with electronic references.
+			q := adviceRequest()
+			q.Gender = gender
+			q.Category = 120
+			for _, id := range []string{"002", "003", "004"} {
+				d.Clubs = append(d.Clubs, Club{ID: id, Name: "Club " + id})
+				m := mark("", "4x50L", 11500)
+				m.Gender = gender
+				m.RelayCategory = 120
+				m.ClubID = id
+				m.ID = id
+				d.Marks = append(d.Marks, m)
+				older := m
+				older.Centiseconds = 11700
+				older.Date = "2025-01-01"
+				d.Marks = append(d.Marks, older)
+			}
+			original := d.Marks[len(d.Marks)-2]
+			for _, kind := range []string{"gender", "pool", "chrono", "date", "category", "unverified", "own"} {
+				m := original
+				m.ClubID = kind
+				m.Centiseconds = 10000
+				switch kind {
+				case "gender":
+					if gender == "M" {
+						m.Gender = "F"
+					} else {
+						m.Gender = "M"
+					}
+				case "pool":
+					m.Pool = 50
+				case "chrono":
+					m.Chrono = "M"
+				case "date":
+					m.Date = "2020-01-01"
+				case "category":
+					m.RelayCategory = 160
+				case "unverified":
+					m.Verified = false
+				case "own":
+					m.ClubID = q.ClubID
+				}
+				d.Marks = append(d.Marks, m)
+			}
+			advice, err := RecommendRelayCategories(context.Background(), d, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g := advice.Groups[0]
+			if len(g.Results) != 0 || len(g.Rivals) != 3 || len(g.Coverage) != 1 || g.Coverage[0].Event != "50L" || g.Coverage[0].Swimmers != 3 || advice.RecommendedCategory != 0 {
+				t.Fatalf("wrong coverage: %+v", g)
+			}
+			for i, r := range g.Rivals {
+				if r.Mark.Centiseconds != 11500 || r.Club.ID != fmt.Sprintf("00%d", i+2) || r.Mark.Date != "2026-01-01" {
+					t.Fatal("wrong best rival", r)
+				}
+			}
+			d.Marks[3].Chrono = "E"
+			advice, err = RecommendRelayCategories(context.Background(), d, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g = advice.Groups[0]
+			if len(g.Results) != 1 || g.Results[0].Rivals != len(g.Rivals) || g.Results[0].Rank != 4 || *g.Results[0].GapToPodium != 500 || g.Coverage[0].Swimmers != 4 {
+				t.Fatalf("inconsistent comparison: %+v", g)
+			}
+		})
+	}
+}
+
+func TestRelayCoverageDoesNotCountUnavailableOrWrongAgeAndKeepsStyles(t *testing.T) {
+	d := adviceSquad()
+	q := adviceRequest()
+	q.Event = "4x50S"
+	q.Category = 120
+	d.Swimmers[0].Available = false
+	d.Swimmers[1].BirthYear = 2004
+	advice, err := RecommendRelayCategories(context.Background(), d, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coverage := advice.Groups[0].Coverage
+	if len(coverage) != 4 {
+		t.Fatal(coverage)
+	}
+	for i, event := range []string{"50E", "50B", "50M", "50L"} {
+		want := 0
+		if i == 3 {
+			want = 2
+		}
+		if coverage[i].Event != event || coverage[i].Swimmers != want {
+			t.Fatal(coverage)
+		}
+	}
+}
+
+func TestRelayCombinesRawManualAndElectronicReferences(t *testing.T) {
+	for _, gender := range []string{"M", "F", "X"} {
+		t.Run(gender, func(t *testing.T) {
+			d := adviceSquad()
+			q := adviceRequest()
+			q.Gender = gender
+			q.Category = 120
+			q.Chrono = ""
+			for i := range d.Swimmers {
+				g := gender
+				if gender == "X" {
+					g = "M"
+					if i >= 2 {
+						g = "F"
+					}
+				}
+				d.Swimmers[i].Gender = g
+				d.Marks[i].Gender = g
+				if i%2 == 1 {
+					d.Marks[i].Chrono = "M"
+				}
+				slower := d.Marks[i]
+				slower.Chrono = "E"
+				slower.Centiseconds = 3500
+				d.Marks = append(d.Marks, slower)
+			}
+			for _, x := range []struct {
+				id, chrono string
+				cs         int
+			}{{"002", "E", 12500}, {"002", "M", 11500}, {"003", "E", 13000}, {"004", "M", 14000}} {
+				m := mark("", "4x50L", x.cs)
+				m.ClubID = x.id
+				m.Gender = gender
+				m.Chrono = x.chrono
+				m.RelayCategory = 120
+				d.Marks = append(d.Marks, m)
+			}
+			otherPool := mark("", "4x50L", 9000)
+			otherPool.ClubID = "005"
+			otherPool.Gender = gender
+			otherPool.Pool = 50
+			otherPool.RelayCategory = 120
+			d.Marks = append(d.Marks, otherPool)
+			advice, err := RecommendRelayCategories(context.Background(), d, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g := advice.Groups[0]
+			if !g.AgeEligible || len(g.Results) != 1 || g.Results[0].Total != 12000 || g.Results[0].Rank != 2 || len(g.Rivals) != 3 || g.Rivals[0].Mark.Chrono != "M" || g.Rivals[0].Mark.Centiseconds != 11500 || *g.Results[0].GapToPodium != -2000 {
+				t.Fatalf("wrong combined estimate: %+v", g)
+			}
+			e, m := 0, 0
+			for _, l := range g.Results[0].Legs {
+				if l.Chrono == "E" {
+					e++
+				} else if l.Chrono == "M" {
+					m++
+				}
+				if l.Time != 3000 || l.Date != "2026-01-01" {
+					t.Fatal(l)
+				}
+			}
+			if e != 2 || m != 2 {
+				t.Fatal("lost reference timings", g.Results[0].Legs)
+			}
+		})
+	}
+}
+
+func TestRelayAgeEligibilityIndependentOfMarks(t *testing.T) {
+	d := adviceSquad()
+	d.Marks = nil
+	q := adviceRequest()
+	q.Chrono = ""
+	for i := range d.Swimmers {
+		d.Swimmers[i].BirthYear = 1997
+	} // 4 x 30 = 120 in 2026/27.
+	advice, err := RecommendRelayCategories(context.Background(), d, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range advice.Groups {
+		if g.AgeEligible != (g.Category <= 120) || len(g.Results) != 0 {
+			t.Fatal(g)
+		}
+	}
+	d.Swimmers[0].BirthYear = 2004
+	advice, err = RecommendRelayCategories(context.Background(), d, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range advice.Groups {
+		if g.AgeEligible != (g.Category == 80) {
+			t.Fatal("premaster eligibility", g)
+		}
+	}
+	d.Swimmers[0].Available = false
+	advice, err = RecommendRelayCategories(context.Background(), d, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range advice.Groups {
+		if g.AgeEligible {
+			t.Fatal("only three available", g)
+		}
+	}
+	d.Swimmers[0].Available = true
+	d.Swimmers[0].BirthYear = 1997
+	q.Gender = "X"
+	for i := range d.Swimmers {
+		d.Swimmers[i].Gender = "F"
+	}
+	d.Swimmers[0].Gender = "M"
+	advice, err = RecommendRelayCategories(context.Background(), d, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range advice.Groups {
+		if g.AgeEligible {
+			t.Fatal("mixed needs two men", g)
+		}
+	}
+	d.Swimmers[1].Gender = "M"
+	advice, err = RecommendRelayCategories(context.Background(), d, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range advice.Groups {
+		if g.AgeEligible != (g.Category <= 120) {
+			t.Fatal("mixed quartet eligibility", g)
+		}
+	}
+}

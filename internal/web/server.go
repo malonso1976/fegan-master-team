@@ -266,7 +266,7 @@ func (s *Server) Handler() http.Handler {
 			}
 			chronos := []string{q.Chrono}
 			if q.Chrono == "" {
-				chronos = []string{"E", "M"}
+				chronos = []string{""}
 			}
 			for _, pool := range pools {
 				for _, chrono := range chronos {

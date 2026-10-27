@@ -11,6 +11,14 @@ import (
 	"github.com/marianoao/fegan-master-team/internal/store"
 )
 
+const clubHistoryYears = 10
+
+type fullSyncStamp struct {
+	ClubID       string
+	Date         string
+	HistoryYears int
+}
+
 type Status struct {
 	Reused     int      `json:"reused"`
 	Scope      string   `json:"scope"`
@@ -85,14 +93,11 @@ func (s *Service) Start(club, scope string, force bool) Status {
 		s.mu.Unlock()
 		return v
 	}
-	var full struct {
-		ClubID string
-		Date   string
-	}
+	var full fullSyncStamp
 	if scope == "all" && !force {
 		_ = s.store.Setting(context.Background(), "full_sync_done", &full)
 	}
-	if scope == "all" && !force && full.ClubID == club && full.Date == time.Now().Format("2006-01-02") {
+	if scope == "all" && !force && full.ClubID == club && full.Date == time.Now().Format("2006-01-02") && full.HistoryYears == clubHistoryYears {
 		v := s.status
 		s.mu.Unlock()
 		return v
@@ -120,7 +125,7 @@ func (s *Service) Start(club, scope string, force bool) Status {
 		s.mu.Unlock()
 		_ = s.store.SetSetting(context.Background(), "sync_status", status)
 		if scope == "all" && len(status.Warnings) == 0 {
-			_ = s.store.SetSetting(context.Background(), "full_sync_done", map[string]string{"ClubID": club, "Date": time.Now().Format("2006-01-02")})
+			_ = s.store.SetSetting(context.Background(), "full_sync_done", fullSyncStamp{ClubID: club, Date: time.Now().Format("2006-01-02"), HistoryYears: clubHistoryYears})
 		}
 		if pending && ctx.Err() == nil {
 			s.Start(club, "rivals", false)
@@ -167,35 +172,8 @@ func (s *Service) run(ctx context.Context, club, scope string, force bool) {
 			s.warn(e.Error())
 		}
 		s.advance()
-		count := 0
-		for _, event := range domain.Events {
-			if !domain.Relay(event) {
-				count += 8
-			}
-		}
-		s.stage("Marcas del club · últimos dos años", count)
-		for _, gender := range []string{"M", "F"} {
-			for _, pool := range []int{25, 50} {
-				for _, chrono := range []string{"E", "M"} {
-					for _, event := range domain.Events {
-						if domain.Relay(event) {
-							continue
-						}
-						if ctx.Err() != nil {
-							s.warn("Actualización interrumpida o tiempo agotado")
-							return
-						}
-						q := fegan.Query{ClubID: club, Member: true, Gender: gender, Pool: pool, Chrono: chrono, Event: event, From: now.AddDate(-2, 0, 0).Format("2006-01-02"), To: now.Format("2006-01-02")}
-						p, e := s.client.Preview(ctx, q)
-						if e != nil {
-							s.warn(fmt.Sprintf("Club %s/%dm/%s: %s", event, pool, chrono, e))
-						} else if len(p.Data.Marks) > 0 {
-							s.save(ctx, p.Data, map[string]any{"automatic": "team", "query": q})
-						}
-						s.advance()
-					}
-				}
-			}
+		if !s.loadClubHistory(ctx, club, now) {
+			return
 		}
 	}
 	if scope != "relays" {
@@ -207,7 +185,7 @@ func (s *Service) run(ctx context.Context, club, scope string, force bool) {
 		queries := fegan.RivalQueries(state, club, season, now)
 		s.stage("Rivales · diez mejores por grupo y prueba", len(queries))
 		if len(queries) == 0 {
-			s.warn("Sin marcas recientes del equipo para determinar pruebas relevantes; añade marcas o sincroniza el club")
+			s.warn("Sin marcas del equipo para determinar pruebas relevantes; añade marcas o sincroniza el club")
 		}
 		type queryCache struct {
 			Date    string
@@ -284,4 +262,40 @@ func (s *Service) run(ctx context.Context, club, scope string, force bool) {
 			s.advance()
 		}
 	}
+}
+
+func clubHistoryQueries(club string, now time.Time) []fegan.Query {
+	queries := []fegan.Query{}
+	for _, gender := range []string{"M", "F"} {
+		for _, pool := range []int{25, 50} {
+			for _, chrono := range []string{"E", "M"} {
+				for _, event := range domain.Events {
+					if domain.Relay(event) {
+						continue
+					}
+					queries = append(queries, fegan.Query{ClubID: club, Member: true, Gender: gender, Pool: pool, Chrono: chrono, Event: event, From: now.AddDate(-clubHistoryYears, 0, 0).Format("2006-01-02"), To: now.Format("2006-01-02")})
+				}
+			}
+		}
+	}
+	return queries
+}
+
+func (s *Service) loadClubHistory(ctx context.Context, club string, now time.Time) bool {
+	queries := clubHistoryQueries(club, now)
+	s.stage("Nadadores y marcas del club · últimos diez años", len(queries))
+	for _, q := range queries {
+		if ctx.Err() != nil {
+			s.warn("Actualización interrumpida o tiempo agotado")
+			return false
+		}
+		p, e := s.client.Preview(ctx, q)
+		if e != nil {
+			s.warn(fmt.Sprintf("Club %s/%dm/%s: %s", q.Event, q.Pool, q.Chrono, e))
+		} else if len(p.Data.Marks) > 0 {
+			s.save(ctx, p.Data, map[string]any{"automatic": "team", "query": q, "history_years": clubHistoryYears})
+		}
+		s.advance()
+	}
+	return true
 }

@@ -116,3 +116,49 @@ func TestSeasonRecommendationAndCategoryAPI(t *testing.T) {
 		t.Fatal(advice, e)
 	}
 }
+
+func TestRelayAPIReturnsRivalsWithoutOwnComposition(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "team.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	for _, id := range []string{"001", "002"} {
+		if err = db.SaveClub(ctx, domain.Club{ID: id, Name: "Club " + id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = db.SaveMark(ctx, domain.Mark{ClubID: "002", Event: "4x50L", Gender: "F", RelayCategory: 120, Pool: 25, Chrono: "E", Date: "2026-06-13", Centiseconds: 13000, Source: "manual", Verified: true}); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db, "127.0.0.1:12345")
+	defer s.Close()
+	r := httptest.NewRequest("POST", "http://"+s.Host+"/api/relays", bytes.NewBufferString(`{"club_id":"001","event":"4x50L","gender":"F","season_start":2026,"from":"2024-10-27","to":"2026-10-27","verified_only":true,"category":120,"limit":2}`))
+	r.Header.Set("X-CSRF-Token", s.token)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var groups []relayComparison
+	if err = json.Unmarshal(w.Body.Bytes(), &groups); err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 2 {
+		t.Fatal(groups)
+	}
+	for _, group := range groups {
+		g := group.Advice.Groups[0]
+		want := 0
+		if group.Pool == 25 && group.Chrono == "" {
+			want = 1
+		}
+		if len(g.Results) != 0 || len(g.Rivals) != want || len(g.Coverage) != 1 || g.Coverage[0].Swimmers != 0 {
+			t.Fatalf("wrong partition: %+v", group)
+		}
+		if want == 1 && (g.Rivals[0].Club.ID != "002" || g.Rivals[0].Mark.Centiseconds != 13000) {
+			t.Fatal(g.Rivals)
+		}
+	}
+}

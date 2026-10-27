@@ -5,7 +5,7 @@
 - Licencia de nadador e identificador de club son cadenas: conserva ceros iniciales. La licencia identifica de forma única a una persona. No fusiones por nombre.
 - Conserva la procedencia, los datos históricos y las correcciones manuales. Importaciones transaccionales e idempotentes. Nunca inventes resultados, reglas oficiales, probabilidades o equivalencias de piscina/cronometría.
 - Separa dominio, persistencia, adaptador FEGAN e interfaz. No añadas servicios externos obligatorios ni herramientas de compilación de interfaz sin justificarlo.
-- Usa tiempos enteros en centésimas. No mezcles piscinas, categorías, parciales ni cronometrajes en comparativas. Identifica las estimaciones y la cobertura del conjunto observado.
+- Usa tiempos enteros en centésimas. No mezcles piscinas, categorías ni parciales en comparativas. En oportunidades individuales conserva el cronometraje de la mejor propia. Excepción confirmada por el usuario: Componer relevos combina referencias manuales y electrónicas, usando tiempos sin conversión y mostrando el cronometraje de cada referencia. Identifica las estimaciones y la cobertura del conjunto observado.
 - No alteres archivos personales ni bases de datos del usuario durante pruebas. Usa directorios temporales. No registres licencias o nombres en logs.
 - Verificación: `go test ./...`, `go vet ./...`, `go test -race ./...` y compilación mediante `scripts/build.sh`. Prueba con fixtures anónimos el contrato FEGAN; una prueba unitaria no acredita disponibilidad externa.
 - Antes de entregar, actualiza README.md y docs, registra comprobaciones y limitaciones reales. No publiques ni envíes datos a GitHub sin petición del usuario.
@@ -16,7 +16,7 @@
 
 - La interfaz tiene entradas independientes para Nadadores y Clubes, y formularios separados para marcas individuales y relevos. Clubes siempre por nombre guardado + código y orden alfabético. En marcas individuales el club empieza vacío y solo se propone el actual al elegir un nadador; al editar se respeta el club histórico.
 - Borrado definitivo transaccional: nadador y sus marcas, incluidos relevos con su licencia; club y sus nadadores actuales más marcas dependientes. Borra versiones relacionadas y evita resurrecciones por importaciones usando exclusiones hash persistentes. No pruebes sobre datos personales. Las copias antiguas no se purgan.
-- Admitir PDF locales sin conexión con vista previa, procedencia local y correspondencias explícitas para clubes desconocidos. No atribuir verificación federativa a un archivo subido. Al quitar selectores de piscina/crono, mantener grupos de resultados separados; no imponer silenciosamente 25 m electrónico ni un perfil de invierno.
+- Admitir PDF locales sin conexión con vista previa, procedencia local y correspondencias explícitas para clubes desconocidos. No atribuir verificación federativa a un archivo subido. Al quitar selectores de piscina/crono, conservar piscinas separadas; en relevos combinar E/M por petición posterior del usuario; no imponer silenciosamente 25 m electrónico ni un perfil de invierno.
 
 - En arranque normal, cerrar la última pestaña termina el proceso tras cinco segundos de margen; recargas y otras pestañas deben mantenerlo. No ligar el cierre al proceso del lanzador ni usar solo latidos JavaScript sujetos a suspensión. `-no-browser` conserva el servidor independiente. Cerrar ordenadamente HTTP, trabajos y SQLite.
 
@@ -24,3 +24,7 @@
 
 - Reglas de relevos por tipo ChampionshipRules/LeagueRules, sin URLs ni temporadas fijas en el dominio. El corte 01/09/2023 de campeonato es histórico, no cambia con el año de la temporada.
 - Oportunidades: una fila por prueba en la piscina elegida, mejor marca histórica guardada propia y rivales de dos años móviles; usar el cronometraje de la mejor propia (confirmado por usuario). No mezclar E/M; empate propio E/M prefiere E. Marcas: mejores por licencia/prueba/piscina/crono/categoría dentro de filtros, sin borrar lo oculto.
+
+- Relevos: ocultar en la interfaz categorías sin cuatro integrantes disponibles elegibles por edades/composición; distinguir esa elegibilidad de la falta de marcas. Historial de diez años por licencia de cualquier miembro, incluidos clubes anteriores, mediante vista previa y confirmación; no cambiar fichas actuales. Por petición posterior, la importación inicial por club sí incorpora a todos los nadadores con resultados para ese código en diez años; revisar pertenencia actual y disponibilidad, sin deducirlas de la antigüedad de una marca.
+
+- La selección inicial y la actualización completa del club consultan diez años de nadadores y marcas por código, todas las pruebas individuales y M/F × 25/50 × E/M. El sello diario exige HistoryYears=10; sellos previos de dos años no impiden completar el historial. Rivales individuales y PDF conservan sus ventanas propias.
