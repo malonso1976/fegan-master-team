@@ -41,3 +41,6 @@ go.work.sum
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite.v*.bak
+
+# Python distribution tooling cache
+__pycache__/

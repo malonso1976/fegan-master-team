@@ -40,6 +40,8 @@ sh scripts/build.sh
 
 El script genera ejecutables para Windows, macOS y Linux, amd64/arm64, en `dist/`. La compilación cruzada no sustituye pruebas de ejecución en cada sistema. Véase [verificación](docs/verification.md).
 
+El workflow **Prepare release** prepara un borrador al subir una etiqueta `vX.Y.Z` o ejecutarlo manualmente con una etiqueta existente. Tras validar en los tres sistemas genera seis ZIP (amd64/arm64), con ejecutable y guía breve, y SHA-256. La publicación requiere revisión manual. Consulta [cómo preparar una release](docs/releases.md).
+
 - [Arquitectura](ARCHITECTURE.md)
 - [Instrucciones de trabajo](AGENTS.md)
 - [Guía funcional](docs/functional.md)

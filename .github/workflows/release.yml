@@ -1,0 +1,135 @@
+name: Prepare release
+run-name: Prepare release ${{ inputs.tag || github.ref_name }}
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Etiqueta existente vX.Y.Z (por ejemplo v1.0.0)'
+        required: true
+        type: string
+
+permissions: {}
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node.js 24)
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate existing version tag
+        id: version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'La etiqueta debe tener formato vX.Y.Z, sin ceros iniciales ni sufijos.' >&2
+            exit 1
+          fi
+          commit=$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")
+          printf 'tag=%s\ncommit=%s\n' "$RELEASE_TAG" "$commit" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node.js 24)
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0 (Node.js 24)
+        with:
+          go-version-file: .tool-versions
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  package:
+    needs: [prepare, validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node.js 24)
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0 (Node.js 24)
+        with:
+          go-version-file: .tool-versions
+      - name: Check distribution packaging
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Build portable binaries
+        run: sh scripts/build.sh
+      - name: Package six ZIP files and SHA-256 checksums
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: python3 scripts/package-release.py "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node.js 24)
+        with:
+          name: release-${{ needs.prepare.outputs.tag }}
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  draft:
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2 (Node.js 24)
+        with:
+          name: release-${{ needs.prepare.outputs.tag }}
+          path: release/
+          digest-mismatch: error
+      - name: Check ZIP checksums
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
+      - name: Create draft with generated release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/${GH_REPO}/commits/${RELEASE_TAG}" --jq .sha)
+          if [[ "$current" != "$RELEASE_COMMIT" ]]; then
+            echo 'La etiqueta ha cambiado durante la ejecución; no se creará el borrador.' >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" release/*.zip release/SHA256SUMS \
+            --repo "$GH_REPO" --verify-tag --draft --generate-notes \
+            --title "FEGAN Master Team ${RELEASE_TAG}"
+          printf 'Borrador creado para `%s` desde `%s`. Revísalo y publícalo en Releases.\n' \
+            "$RELEASE_TAG" "$RELEASE_COMMIT" >> "$GITHUB_STEP_SUMMARY"
