@@ -3,6 +3,7 @@ package syncer
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/marianoao/fegan-master-team/internal/store"
 )
 
-const clubHistoryYears = 10
+const clubHistoryYears = 5
 
 type fullSyncStamp struct {
 	ClubID       string
@@ -175,6 +176,9 @@ func (s *Service) run(ctx context.Context, club, scope string, force bool) {
 		if !s.loadClubHistory(ctx, club, now) {
 			return
 		}
+		if !s.loadPersonalBests(ctx, club, now) {
+			return
+		}
 	}
 	if scope != "relays" {
 		state, e := s.store.Snapshot(ctx)
@@ -283,7 +287,7 @@ func clubHistoryQueries(club string, now time.Time) []fegan.Query {
 
 func (s *Service) loadClubHistory(ctx context.Context, club string, now time.Time) bool {
 	queries := clubHistoryQueries(club, now)
-	s.stage("Nadadores y marcas del club · últimos diez años", len(queries))
+	s.stage("Nadadores y marcas del club · últimos cinco años", len(queries))
 	for _, q := range queries {
 		if ctx.Err() != nil {
 			s.warn("Actualización interrumpida o tiempo agotado")
@@ -292,8 +296,45 @@ func (s *Service) loadClubHistory(ctx context.Context, club string, now time.Tim
 		p, e := s.client.Preview(ctx, q)
 		if e != nil {
 			s.warn(fmt.Sprintf("Club %s/%dm/%s: %s", q.Event, q.Pool, q.Chrono, e))
+		} else {
+			for _, warning := range p.Warnings {
+				if strings.HasPrefix(warning, "Se omitieron") {
+					s.warn(fmt.Sprintf("Club %s/%dm/%s: %s", q.Event, q.Pool, q.Chrono, warning))
+				}
+			}
+			if len(p.Data.Marks) > 0 {
+				s.save(ctx, p.Data, map[string]any{"automatic": "team", "query": q, "history_years": clubHistoryYears})
+			}
+		}
+		s.advance()
+	}
+	return true
+}
+
+func (s *Service) loadPersonalBests(ctx context.Context, club string, now time.Time) bool {
+	state, err := s.store.Snapshot(ctx)
+	if err != nil {
+		s.warn("No se pudo leer el equipo para consultar mejores marcas personales")
+		return false
+	}
+	members := []domain.Swimmer{}
+	for _, swimmer := range state.Swimmers {
+		if swimmer.ClubID == club && swimmer.Member {
+			members = append(members, swimmer)
+		}
+	}
+	s.stage("Mejores marcas personales · últimos cinco años", len(members))
+	for _, swimmer := range members {
+		if ctx.Err() != nil {
+			s.warn("Actualización de mejores marcas personales interrumpida o tiempo agotado")
+			return false
+		}
+		q := fegan.Query{License: swimmer.License, Gender: swimmer.Gender, BirthFrom: swimmer.BirthYear, BirthTo: swimmer.BirthYear, Event: "all", From: now.AddDate(-clubHistoryYears, 0, 0).Format("2006-01-02"), To: now.Format("2006-01-02")}
+		p, err := s.client.PersonalPreview(ctx, q)
+		if err != nil {
+			s.warn("No se pudo completar una consulta de mejores marcas personales; cobertura parcial.")
 		} else if len(p.Data.Marks) > 0 {
-			s.save(ctx, p.Data, map[string]any{"automatic": "team", "query": q, "history_years": clubHistoryYears})
+			s.save(ctx, p.Data, map[string]any{"automatic": "personal-bests", "query": q, "requests": p.Requests})
 		}
 		s.advance()
 	}

@@ -118,6 +118,7 @@ func (c *Client) Preview(ctx context.Context, q Query) (Preview, error) {
 			return Preview{}, fmt.Errorf("%s: %w", event, e)
 		}
 		result.Requests += p.Requests
+		result.Warnings = append(result.Warnings, p.Warnings...)
 		result.Cached = result.Cached && p.Cached
 		result.Data.Marks = append(result.Data.Marks, p.Data.Marks...)
 		for _, v := range p.Data.Clubs {
@@ -202,11 +203,12 @@ func (c *Client) preview(ctx context.Context, q Query) (Preview, error) {
 		if len(body) > 4*1024*1024 {
 			return errors.New("respuesta FEGAN demasiado grande")
 		}
-		data, e := Parse(strings.NewReader(string(body)), q)
+		parsed, e := parseResults(strings.NewReader(string(body)), q)
 		if e != nil {
 			return e
 		}
-		if !q.TopTen && len(data.Marks) >= 100 {
+		data := parsed.Data
+		if !q.TopTen && parsed.Rows >= 100 {
 			if from == to {
 				return errors.New("FEGAN devuelve 100 resultados en un solo día; no se puede garantizar la importación completa")
 			}
@@ -217,6 +219,9 @@ func (c *Client) preview(ctx context.Context, q Query) (Preview, error) {
 				return e
 			}
 			return fetch(mid.AddDate(0, 0, 1).Format("2006-01-02"), to)
+		}
+		if parsed.SkippedBirthYears > 0 {
+			out.Warnings = append(out.Warnings, fmt.Sprintf("Se omitieron filas sin año de nacimiento: %d (%s, %d m, %s). Las demás marcas válidas se conservan.", parsed.SkippedBirthYears, q.Event, q.Pool, q.Chrono))
 		}
 		if q.TopTen {
 			data = topTen(data)
@@ -274,11 +279,23 @@ func walk(n *html.Node, fn func(*html.Node)) {
 		walk(ch, fn)
 	}
 }
+
+type parsedResults struct {
+	Data              domain.Data
+	Rows              int
+	SkippedBirthYears int
+}
+
 func Parse(r io.Reader, q Query) (domain.Data, error) {
-	d := domain.Data{Clubs: []domain.Club{}, Swimmers: []domain.Swimmer{}, Marks: []domain.Mark{}}
+	result, err := parseResults(r, q)
+	return result.Data, err
+}
+func parseResults(r io.Reader, q Query) (parsedResults, error) {
+	result := parsedResults{Data: domain.Data{Clubs: []domain.Club{}, Swimmers: []domain.Swimmer{}, Marks: []domain.Mark{}}}
+	d := &result.Data
 	root, e := html.Parse(r)
 	if e != nil {
-		return d, e
+		return result, e
 	}
 	clubs := map[string]domain.Club{}
 	labels := map[string]string{}
@@ -298,13 +315,13 @@ func Parse(r io.Reader, q Query) (domain.Data, error) {
 		}
 	})
 	if !formOK {
-		return d, errors.New("formato FEGAN no reconocido: falta el catálogo de clubes")
+		return result, errors.New("formato FEGAN no reconocido: falta el catálogo de clubes")
 	}
 	if table == nil && strings.Contains(text(root), "Non se atopou ningún resultado.") {
-		return d, nil
+		return result, nil
 	}
 	if table == nil {
-		return d, errors.New("FEGAN no devolvió una tabla de resultados; consulta vacía o cambio de formato")
+		return result, errors.New("FEGAN no devolvió una tabla de resultados; consulta vacía o cambio de formato")
 	}
 	var headers []string
 	var rows [][]string
@@ -327,36 +344,41 @@ func Parse(r io.Reader, q Query) (domain.Data, error) {
 	})
 	expected := []string{"License", "Name", "Year", "Club", "Event", "Mark", "C.P.", "Date", "Location", "Split"}
 	if strings.Join(headers, "|") != strings.Join(expected, "|") {
-		return d, errors.New("columnas FEGAN diferentes al contrato conocido")
+		return result, errors.New("columnas FEGAN diferentes al contrato conocido")
 	}
+	result.Rows = len(rows)
 	seen := map[string]bool{}
 	for i, cells := range rows {
 		if len(cells) != 10 {
-			return d, fmt.Errorf("fila FEGAN %d con columnas inesperadas", i+1)
+			return result, fmt.Errorf("fila FEGAN %d con columnas inesperadas", i+1)
 		}
 		c := cells
+		if strings.TrimSpace(c[2]) == "" {
+			result.SkippedBirthYears++
+			continue
+		}
 		club, ok := labels[c[3]]
 		if !ok {
-			return d, errors.New("club de un resultado no encontrado en el catálogo FEGAN")
+			return result, errors.New("club de un resultado no encontrado en el catálogo FEGAN")
 		}
 		year, e := strconv.Atoi(c[2])
 		if e != nil {
-			return d, e
+			return result, e
 		}
 		cs, e := domain.ParseTime(c[5])
 		if e != nil {
-			return d, fmt.Errorf("marca FEGAN no válida: fila %d", i+1)
+			return result, fmt.Errorf("marca FEGAN no válida: fila %d", i+1)
 		}
 		date, e := time.Parse("20060102", c[7])
 		if e != nil {
-			return d, e
+			return result, e
 		}
 		if c[6] != fmt.Sprintf("%s%d", q.Chrono, q.Pool) || c[4] != q.Event || c[9] != "N" || (q.License != "" && c[0] != q.License) || (q.ClubID != "" && club != q.ClubID) || (q.BirthFrom > 0 && (year < q.BirthFrom || year > q.BirthTo)) || date.Format("2006-01-02") < q.From || date.Format("2006-01-02") > q.To {
-			return d, errOutsideFilters
+			return result, errOutsideFilters
 		}
 		s := domain.Swimmer{License: c[0], Name: c[1], BirthYear: year, Gender: q.Gender, ClubID: club, Member: q.Member, Available: q.Member}
 		if e = s.Validate(); e != nil {
-			return d, e
+			return result, e
 		}
 		if !seen[s.License] {
 			d.Swimmers = append(d.Swimmers, s)
@@ -365,14 +387,14 @@ func Parse(r io.Reader, q Query) (domain.Data, error) {
 		clubs[club] = domain.Club{ID: club, Name: c[3]}
 		m := domain.Mark{License: c[0], ClubID: club, Event: c[4], Pool: q.Pool, Chrono: q.Chrono, Date: date.Format("2006-01-02"), Location: c[8], Centiseconds: cs, Source: "fegan", SourceURL: endpoint, RetrievedAt: time.Now().UTC().Format(time.RFC3339), Verified: true, Gender: q.Gender}
 		if e = m.Validate(); e != nil {
-			return d, e
+			return result, e
 		}
 		d.Marks = append(d.Marks, m)
 	}
 	for _, v := range clubs {
 		d.Clubs = append(d.Clubs, v)
 	}
-	return d, nil
+	return result, nil
 }
 
 func (c *Client) RefreshCaches(marks, documents bool) {

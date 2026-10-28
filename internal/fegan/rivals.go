@@ -29,8 +29,12 @@ func RivalQueries(d domain.Data, club string, season int, now time.Time) []Query
 		if high != 0 {
 			birthFrom = season + 1 - high
 		}
-		q := Query{TopTen: true, Event: m.Event, Gender: s.Gender, Pool: m.Pool, Chrono: m.Chrono, From: from, To: to, BirthFrom: birthFrom, BirthTo: season + 1 - low}
-		queries[fmt.Sprintf("%+v", q)] = q
+		for _, pool := range domain.ComparablePools(m.Event, s.Gender, m.Pool) {
+			for _, chrono := range []string{"E", "M"} {
+				q := Query{TopTen: true, Event: m.Event, Gender: s.Gender, Pool: pool, Chrono: chrono, From: from, To: to, BirthFrom: birthFrom, BirthTo: season + 1 - low}
+				queries[fmt.Sprintf("%+v", q)] = q
+			}
+		}
 	}
 	keys := []string{}
 	for key := range queries {

@@ -46,21 +46,34 @@ func (s *Server) retain(p fegan.Preview) string {
 	return id
 }
 func (s *Server) editRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/swimmers/deactivate", func(w http.ResponseWriter, r *http.Request) {
-		var q struct {
-			Licenses []string `json:"licenses"`
+	for _, active := range []bool{false, true} {
+		path := "POST /api/swimmers/deactivate"
+		if active {
+			path = "POST /api/swimmers/activate"
 		}
-		if err := decode(w, r, &q); err != nil {
-			failure(w, err, 400)
-			return
-		}
-		changed, err := s.Store.DeactivateSwimmers(r.Context(), q.Licenses)
-		if err != nil {
-			failure(w, err, 400)
-			return
-		}
-		respond(w, map[string]int{"updated": changed})
-	})
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			var q struct {
+				Licenses []string `json:"licenses"`
+			}
+			if err := decode(w, r, &q); err != nil {
+				failure(w, err, 400)
+				return
+			}
+			var changed int
+			var err error
+			if active {
+				changed, err = s.Store.ActivateSwimmers(r.Context(), q.Licenses)
+			} else {
+				changed, err = s.Store.DeactivateSwimmers(r.Context(), q.Licenses)
+			}
+			if err != nil {
+				failure(w, err, 400)
+				return
+			}
+			respond(w, map[string]int{"updated": changed})
+		})
+	}
+
 	mux.HandleFunc("POST /api/delete", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			Kind string `json:"kind"`
@@ -85,6 +98,19 @@ func (s *Server) editRoutes(mux *http.ServeMux) {
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e, 400)
 			return
+		}
+		if q.License != "" && q.Gender == "" {
+			state, err := s.Store.Snapshot(r.Context())
+			if err != nil {
+				failure(w, err, 500)
+				return
+			}
+			for _, swimmer := range state.Swimmers {
+				if swimmer.License == q.License {
+					q.Gender = swimmer.Gender
+					break
+				}
+			}
 		}
 		if _, e := fegan.ExpandQuery(q); e != nil {
 			failure(w, e, 400)

@@ -227,4 +227,15 @@ func TestOpportunityAPIAlwaysUsesRecentRivalsAndHistoricalOwnTiming(t *testing.T
 	if row.Time != 2600 || row.Chrono != "M" || row.Rank != 1 || len(row.Details) != 1 || row.Details[0].Mark.Centiseconds != 2700 {
 		t.Fatal(row)
 	}
+	r = httptest.NewRequest("POST", "http://"+s.Host+"/api/recommend", strings.NewReader(`{"license":"a"}`))
+	r.Header.Set("X-CSRF-Token", s.token)
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if e = json.Unmarshal(w.Body.Bytes(), &rows); e != nil || w.Code != 200 || len(rows) != 1 {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	row = rows[0]
+	if row.Pool != 50 || row.Time != 2689 || row.OwnMark.Centiseconds != 2600 || row.OwnMark.Pool != 25 || row.Chrono != "E" || row.Conversion == nil || row.Rank != 2 || len(row.Details) != 1 || row.Details[0].Time != 2060 {
+		t.Fatal(row)
+	}
 }

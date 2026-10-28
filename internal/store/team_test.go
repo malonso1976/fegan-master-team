@@ -74,3 +74,61 @@ func TestDeactivateSelectionPreservesProfilesMarksAndImportDecisions(t *testing.
 		}
 	}
 }
+
+func TestActivateSelectionIsAtomicAndPreservesHistoricalData(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(filepath.Join(t.TempDir(), "team.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	club := domain.Club{ID: "001", Name: "Club de prueba"}
+	if err = db.SaveClub(ctx, club); err != nil {
+		t.Fatal(err)
+	}
+	original := domain.Data{Clubs: []domain.Club{club}}
+	for _, license := range []string{"00001", "00002", "00003"} {
+		swimmer := domain.Swimmer{License: license, Name: "Prueba", BirthYear: 1980, Gender: "M", ClubID: club.ID}
+		if err = db.SaveSwimmer(ctx, swimmer); err != nil {
+			t.Fatal(err)
+		}
+		original.Swimmers = append(original.Swimmers, swimmer)
+		mark := domain.Mark{License: license, ClubID: club.ID, Event: "50L", Gender: "M", Pool: 25, Chrono: "E", Date: "2023-01-01", Centiseconds: 3000, Source: "fegan"}
+		if err = db.SaveMark(ctx, mark); err != nil {
+			t.Fatal(err)
+		}
+		original.Marks = append(original.Marks, mark)
+	}
+	changed, err := db.ActivateSwimmers(ctx, []string{"00001", "00002", "00001"})
+	if err != nil || changed != 2 {
+		t.Fatal(changed, err)
+	}
+	history, err := db.History(ctx)
+	if err != nil || len(history) != 2 {
+		t.Fatal("activation history missing", err)
+	}
+	if changed, err = db.ActivateSwimmers(ctx, []string{"00001", "00002"}); err != nil || changed != 0 {
+		t.Fatal("activation not idempotent", err)
+	}
+	if _, err = db.Import(ctx, original); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ActivateSwimmers(ctx, []string{"00003", "missing"}); err == nil {
+		t.Fatal("invalid selection accepted")
+	}
+	state, err := db.Snapshot(ctx)
+	if err != nil || len(state.Marks) != 3 || len(state.Swimmers) != 3 {
+		t.Fatal("data lost", err)
+	}
+	for _, swimmer := range state.Swimmers {
+		want := swimmer.License != "00003"
+		if swimmer.Member != want || swimmer.Available != want || swimmer.ClubID != club.ID || swimmer.Name != "Prueba" || swimmer.BirthYear != 1980 {
+			t.Fatal("activation changed wrong fields, was reverted by import or committed partially")
+		}
+	}
+	for _, selection := range [][]string{nil, {"bad license"}, make([]string, 1001)} {
+		if _, err = db.ActivateSwimmers(ctx, selection); err == nil {
+			t.Fatal("invalid selection accepted")
+		}
+	}
+}

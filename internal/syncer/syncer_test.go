@@ -45,7 +45,7 @@ func TestBackgroundRivalsCompleteAndPersistStatus(t *testing.T) {
 	}
 	service.wg.Wait()
 	status = service.Status()
-	if status.Running || status.Completed != 1 || status.Total != 1 || len(status.Warnings) > 0 || status.FinishedAt == "" {
+	if status.Running || status.Completed != 4 || status.Total != 4 || len(status.Warnings) > 0 || status.FinishedAt == "" {
 		t.Fatal(status)
 	}
 	var persisted Status
@@ -55,13 +55,13 @@ func TestBackgroundRivalsCompleteAndPersistStatus(t *testing.T) {
 	service.Start("00123", "rivals", false)
 	service.wg.Wait()
 	status = service.Status()
-	if requests != 1 || status.Reused != 1 {
+	if requests != 4 || status.Reused != 4 {
 		t.Fatal("successful daily query was repeated", requests, status)
 	}
 	service.Close()
 }
 
-func TestInitialClubQueriesCoverTenYearsAndAllIndividualEvents(t *testing.T) {
+func TestInitialClubQueriesCoverFiveYearsAndAllIndividualEvents(t *testing.T) {
 	now := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
 	queries := clubHistoryQueries("00123", now)
 	seen := map[string]bool{}
@@ -75,7 +75,7 @@ func TestInitialClubQueriesCoverTenYearsAndAllIndividualEvents(t *testing.T) {
 		t.Fatal("missing gender/pool/timing combinations")
 	}
 	for _, q := range queries {
-		if q.From != "2016-10-27" || q.To != "2026-10-27" || q.ClubID != "00123" || !q.Member || q.License != "" || domain.Relay(q.Event) {
+		if q.From != "2021-10-27" || q.To != "2026-10-27" || q.ClubID != "00123" || !q.Member || q.License != "" || domain.Relay(q.Event) {
 			t.Fatal("wrong initial import scope")
 		}
 		if err := q.Validate(); err != nil {
@@ -110,10 +110,10 @@ func TestClubHistoryImportsOldSwimmersAndPreservesExistingProfile(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	html := strings.ReplaceAll(string(fixture), "20260613", "20180613")
+	html := strings.ReplaceAll(string(fixture), "20260613", "20230613")
 	start := strings.Index(html, "<tr><td>")
 	end := start + strings.Index(html[start:], "</tr>") + len("</tr>")
-	row := strings.ReplaceAll(strings.ReplaceAll(html[start:end], "00001", "00002"), "20180613", "20170613")
+	row := strings.ReplaceAll(strings.ReplaceAll(html[start:end], "00001", "00002"), "20230613", "20220613")
 	html = strings.Replace(html, "</tbody>", row+"</tbody>", 1)
 	calls := 0
 	client := fegan.New()
@@ -124,7 +124,7 @@ func TestClubHistoryImportsOldSwimmersAndPreservesExistingProfile(t *testing.T) 
 			return nil, context.Canceled
 		}
 		r.ParseForm()
-		for key, want := range map[string]string{"combo_club": "00123", "input_from_date": "2016-10-27", "input_to_date": "2026-10-27", "input_license": ""} {
+		for key, want := range map[string]string{"combo_club": "00123", "input_from_date": "2021-10-27", "input_to_date": "2026-10-27", "input_license": ""} {
 			if r.Form.Get(key) != want {
 				t.Errorf("wrong initial filter %s", key)
 			}
@@ -155,8 +155,8 @@ func TestClubHistoryImportsOldSwimmersAndPreservesExistingProfile(t *testing.T) 
 	}
 }
 
-func TestDailyClubCacheRequiresTenYearCoverage(t *testing.T) {
-	for _, years := range []int{0, 2, 10} {
+func TestDailyClubCacheRequiresFiveYearCoverage(t *testing.T) {
+	for _, years := range []int{0, 2, 10, 5} {
 		t.Run(fmt.Sprint(years), func(t *testing.T) {
 			db, err := store.Open(filepath.Join(t.TempDir(), "team.sqlite"))
 			if err != nil {
@@ -171,9 +171,63 @@ func TestDailyClubCacheRequiresTenYearCoverage(t *testing.T) {
 			service := New(db, client)
 			status := service.Start("00123", "all", false)
 			service.Suspend()
-			if status.Running != (years != 10) {
+			if status.Running != (years != 5) {
 				t.Fatal("obsolete daily cache reused")
 			}
 		})
+	}
+}
+
+func TestPersonalBestsSupplementKeepsCurrentProfileAndAvailability(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "team.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, id := range []string{"00123", "00999"} {
+		if err = db.SaveClub(ctx, domain.Club{ID: id, Name: "Club"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	swimmer := domain.Swimmer{License: "00001", Name: "Ficha local", BirthYear: 1986, Gender: "M", ClubID: "00999", Member: true, Available: false}
+	if err = db.SaveSwimmer(ctx, swimmer); err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile("../fegan/testdata/personal.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := fegan.New()
+	posts := 0
+	client.HTTP = &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
+		body := `<select name="combo_club"><option value="00123">CLUBTEST</option></select>`
+		if r.Method == "POST" {
+			posts++
+			r.ParseForm()
+			if r.URL.Path != "/marks/best_results_person" || r.Form.Get("input_from_date") != "2021-10-28" || r.Form.Get("input_license") != "00001" || r.Form.Get("combo_club") != "" {
+				t.Error("wrong personal supplementation scope")
+			}
+			body = strings.ReplaceAll(string(fixture), "E50", r.Form.Get("combo_chrono")+r.Form.Get("combo_pool"))
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
+	})}
+	service := New(db, client)
+	defer service.Close()
+	if !service.loadPersonalBests(ctx, "00999", time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC)) {
+		t.Fatal("personal stage failed")
+	}
+	d, err := db.Snapshot(ctx)
+	if err != nil || len(d.Marks) != 4 || len(d.Swimmers) != 1 || d.Swimmers[0] != swimmer || posts != 4 {
+		t.Fatal("personal complement changed current profile", err)
+	}
+	for _, m := range d.Marks {
+		if m.ClubID != "00123" || !strings.HasSuffix(m.SourceURL, "/marks/best_results_person") {
+			t.Fatal("historical club or provenance lost")
+		}
+	}
+	status := service.Status()
+	if status.Completed != 1 || len(status.Warnings) != 0 {
+		t.Fatal("personal stage not complete")
 	}
 }

@@ -36,19 +36,22 @@ func (f Filter) accepts(m Mark) bool {
 type RivalDetail struct {
 	Swimmer Swimmer `json:"swimmer"`
 	Mark    Mark    `json:"mark"`
+	Time    int     `json:"time"`
 }
 
 type Recommendation struct {
-	Details    []RivalDetail `json:"details"`
-	OwnMark    Mark          `json:"own_mark"`
-	Pool       int           `json:"pool"`
-	Chrono     string        `json:"chrono"`
-	Event      string        `json:"event"`
-	Time       int           `json:"time"`
-	Rank       int           `json:"rank"`
-	Rivals     int           `json:"rivals"`
-	GapToFirst int           `json:"gap_to_first"`
-	AgeGroup   string        `json:"age_group"`
+	Conversion *ConversionInfo `json:"conversion,omitempty"`
+	Warnings   []string        `json:"warnings,omitempty"`
+	Details    []RivalDetail   `json:"details"`
+	OwnMark    Mark            `json:"own_mark"`
+	Pool       int             `json:"pool"`
+	Chrono     string          `json:"chrono"`
+	Event      string          `json:"event"`
+	Time       int             `json:"time"`
+	Rank       int             `json:"rank"`
+	Rivals     int             `json:"rivals"`
+	GapToFirst int             `json:"gap_to_first"`
+	AgeGroup   string          `json:"age_group"`
 }
 
 // betterReference breaks ties deterministically without converting timings.
@@ -68,6 +71,9 @@ func betterReference(a, b Mark) bool {
 // Recommend uses the swimmer's lifetime best up to To, and rivals only in
 // From..To. Each event uses the timing type of its own historical best.
 func Recommend(d Data, license string, f Filter) ([]Recommendation, error) {
+	if f.Pool == 0 {
+		return recommendConverted(d, license, f)
+	}
 	check := f
 	if check.Chrono == "" {
 		check.Chrono = "E"
@@ -145,7 +151,7 @@ func Recommend(d Data, license string, f Filter) ([]Recommendation, error) {
 			if m.Centiseconds < first {
 				first = m.Centiseconds
 			}
-			details = append(details, RivalDetail{eligible[m.License], m})
+			details = append(details, RivalDetail{Swimmer: eligible[m.License], Mark: m, Time: m.Centiseconds})
 		}
 		out = append(out, Recommendation{Details: details, OwnMark: own, Pool: f.Pool, Chrono: own.Chrono, Event: event, Time: own.Centiseconds, Rank: rank, Rivals: len(observed), GapToFirst: own.Centiseconds - first, AgeGroup: groupLabel(low, high)})
 	}
@@ -242,12 +248,19 @@ func relayCandidates(d Data, q RelayRequest) ([4][]Leg, []string) {
 	return candidates, styles
 }
 
-func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error) {
+func validateRelayRequest(q RelayRequest) error {
 	if err := validateRelayFilter(q.Filter); err != nil {
-		return nil, err
+		return err
 	}
 	if !Relay(q.Event) || !ValidEvent(q.Event) || !ValidID(q.ClubID) || (q.Gender != "M" && q.Gender != "F" && q.Gender != "X") || q.MinTotal < 0 || q.MaxTotal < q.MinTotal || q.MaxTotal > 500 || q.MinAge < 18 || q.Limit < 1 || q.Limit > 20 {
-		return nil, errors.New("configuración de relevo no válida")
+		return errors.New("configuración de relevo no válida")
+	}
+	return nil
+}
+
+func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error) {
+	if err := validateRelayRequest(q); err != nil {
+		return nil, err
 	}
 	candidates, styles := relayCandidates(d, q)
 	genders := map[string]string{}
@@ -275,6 +288,13 @@ func Optimize(ctx context.Context, d Data, q RelayRequest) ([]RelayResult, error
 		}
 		if depth == 4 {
 			if age < q.MinTotal || age > q.MaxTotal || (q.Gender == "X" && females != 2) {
+				return nil
+			}
+			premaster := false
+			for _, leg := range legs {
+				premaster = premaster || leg.Age < 25
+			}
+			if !relayProposalAllowed(q.Category, age, premaster) {
 				return nil
 			}
 			out = append(out, RelayResult{Legs: append([]Leg{}, legs...), Total: total, AgeTotal: age})

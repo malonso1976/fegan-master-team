@@ -39,7 +39,7 @@ func TestLowerCategoriesAndBestMedalReference(t *testing.T) {
 		t.Fatalf("%+v", advice)
 	}
 	for _, g := range advice.Groups {
-		if g.Category <= 160 {
+		if g.Category == 120 || g.Category == 160 {
 			if len(g.Results) != 1 || g.Results[0].AgeTotal != 180 {
 				t.Fatalf("missing lower category: %+v", g)
 			}
@@ -122,7 +122,7 @@ func TestChampionshipHistoricalDateAndVerifiedConstraints(t *testing.T) {
 	}
 	q.Competition = "league"
 	advice, e = RecommendRelayCategories(context.Background(), d, q)
-	if e != nil || len(advice.Groups[0].Results) != 1 {
+	if e != nil || len(advice.Groups[2].Results) != 1 {
 		t.Fatal("league approximate references rejected", e)
 	}
 }
@@ -136,7 +136,7 @@ func TestRuleTypesDoNotDependOnSeasonOrCircularURL(t *testing.T) {
 		for _, rules := range []string{ChampionshipRules, LeagueRules, ""} {
 			q.Competition = rules
 			advice, e := RecommendRelayCategories(context.Background(), d, q)
-			if e != nil || advice.Rules != rules || len(advice.Groups[0].Results) == 0 {
+			if e != nil || advice.Rules != rules || relayResultCount(advice) == 0 {
 				t.Fatal(season, advice, e)
 			}
 			for _, warning := range advice.Warnings {
@@ -152,7 +152,7 @@ func TestRuleTypesDoNotDependOnSeasonOrCircularURL(t *testing.T) {
 		d.Marks[i].Date = ChampionshipMarksSince
 	}
 	advice, e := RecommendRelayCategories(context.Background(), d, q)
-	if e != nil || len(advice.Groups[0].Results) != 1 {
+	if e != nil || len(advice.Groups[2].Results) != 1 {
 		t.Fatal("historic boundary excluded", advice, e)
 	}
 }
@@ -343,7 +343,7 @@ func TestRelayAgeEligibilityIndependentOfMarks(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, g := range advice.Groups {
-		if g.AgeEligible != (g.Category <= 120) || len(g.Results) != 0 {
+		if g.AgeEligible != (g.Category == 100 || g.Category == 120) || len(g.Results) != 0 {
 			t.Fatal(g)
 		}
 	}
@@ -389,8 +389,125 @@ func TestRelayAgeEligibilityIndependentOfMarks(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, g := range advice.Groups {
-		if g.AgeEligible != (g.Category <= 120) {
+		if g.AgeEligible != (g.Category == 100 || g.Category == 120) {
 			t.Fatal("mixed quartet eligibility", g)
 		}
+	}
+}
+
+func relayResultCount(advice RelayAdvice) int {
+	count := 0
+	for _, g := range advice.Groups {
+		count += len(g.Results)
+	}
+	return count
+}
+
+func TestRelayProposalCategoryBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		sum     int
+		allowed []int
+	}{
+		{100, []int{80, 100}}, {119, []int{80, 100}}, {120, []int{100, 120}},
+		{159, []int{100, 120}}, {160, []int{120, 160}}, {199, []int{120, 160}},
+		{200, []int{160, 200}}, {239, []int{160, 200}}, {240, []int{200, 240}},
+		{279, []int{200, 240}}, {280, []int{240, 280}}, {319, []int{240, 280}},
+		{320, []int{280, 320}}, {400, []int{280, 320}},
+	} {
+		for _, category := range RelayCategories() {
+			want := false
+			for _, c := range tc.allowed {
+				want = want || category == c
+			}
+			if got := relayProposalAllowed(category, tc.sum, false); got != want {
+				t.Fatal(tc, category, got)
+			}
+		}
+	}
+}
+
+func TestRelayCategoryLimitAppliesPerQuartetBeforeResultLimit(t *testing.T) {
+	// Faster old quartet has natural +200 and cannot displace the eligible
+	// younger quartet from +120 when Limit=1. Both free and medley, M/F/X.
+	for _, gender := range []string{"M", "F", "X"} {
+		for _, event := range []string{"4x50L", "4x50S"} {
+			t.Run(gender+event, func(t *testing.T) {
+				d := Data{}
+				for i := 0; i < 8; i++ {
+					age, cs := 50, 2000
+					if i >= 4 {
+						age, cs = 35, 3000
+					}
+					g := gender
+					if gender == "X" {
+						g = "M"
+						if i%4 >= 2 {
+							g = "F"
+						}
+					}
+					license := fmt.Sprintf("s%d", i)
+					d.Swimmers = append(d.Swimmers, Swimmer{License: license, ClubID: "001", BirthYear: 2027 - age, Gender: g, Member: true, Available: true})
+					for _, style := range []string{"L", "E", "B", "M"} {
+						m := mark(license, "50"+style, cs)
+						m.Gender = g
+						d.Marks = append(d.Marks, m)
+					}
+				}
+				q := adviceRequest()
+				q.Gender = gender
+				q.Event = event
+				q.Category = 120
+				q.Limit = 1
+				advice, err := RecommendRelayCategories(context.Background(), d, q)
+				if err != nil || len(advice.Groups) != 1 || !advice.Groups[0].AgeEligible || len(advice.Groups[0].Results) != 1 {
+					t.Fatal(advice, err)
+				}
+				result := advice.Groups[0].Results[0]
+				if result.AgeTotal >= 200 || result.AgeTotal < 120 {
+					t.Fatal("out-of-range quartet won", result)
+				}
+				// Even a mixed-age quartet that is natural +160 remains allowed +120.
+				if result.Total >= 12000 {
+					t.Fatal("eligible intermediate quartet was lost", result)
+				}
+			})
+		}
+	}
+}
+
+func TestRelayAgeEligibilityUsesOneCategoryDropWithoutMarks(t *testing.T) {
+	for _, sum := range []int{100, 119, 120, 159, 160, 199, 200, 239, 240, 279, 280, 319, 320, 400} {
+		d := adviceSquad()
+		d.Marks = nil
+		for i := range d.Swimmers {
+			age := sum / 4
+			if i < sum%4 {
+				age++
+			}
+			d.Swimmers[i].BirthYear = 2027 - age
+		}
+		q := adviceRequest()
+		advice, err := RecommendRelayCategories(context.Background(), d, q)
+		if err != nil {
+			t.Fatal(sum, err)
+		}
+		for _, g := range advice.Groups {
+			if g.AgeEligible != relayProposalAllowed(g.Category, sum, false) || len(g.Results) != 0 {
+				t.Fatal(sum, g)
+			}
+		}
+	}
+	d := adviceSquad()
+	q := adviceRequest()
+	q.Category = 80
+	q.Limit = 0
+	if _, err := RecommendRelayCategories(context.Background(), d, q); err == nil {
+		t.Fatal("skipping optimizer bypassed request validation")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	q.Limit = 1
+	if _, err := RecommendRelayCategories(ctx, d, q); err == nil {
+		t.Fatal("ineligible categories ignored cancellation")
 	}
 }

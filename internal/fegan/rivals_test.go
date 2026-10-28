@@ -18,7 +18,7 @@ func TestRivalQueriesSharedGroupsAndRollingWindow(t *testing.T) {
 	old.Date = "2024-10-25"
 	d.Marks = append(d.Marks, old)
 	queries := RivalQueries(d, "001", 2026, now)
-	if len(queries) != 3 {
+	if len(queries) != 12 {
 		t.Fatal(queries)
 	}
 	for _, q := range queries {
@@ -40,5 +40,21 @@ func TestTopTenUsesDistinctLicenses(t *testing.T) {
 	got := topTen(d)
 	if len(got.Marks) != 10 || len(got.Swimmers) != 10 || got.Marks[9].Centiseconds != 3009 {
 		t.Fatal(got)
+	}
+}
+
+func TestRivalQueriesBothPoolsAndNoInventedEquivalence(t *testing.T) {
+	d := domain.Data{Swimmers: []domain.Swimmer{{License: "a", Gender: "F", BirthYear: 1987, ClubID: "001", Member: true}}}
+	for _, event := range []string{"100L", "100S", "3000L"} {
+		d.Marks = append(d.Marks, domain.Mark{License: "a", Event: event, Pool: 25, Chrono: "E", Date: "2020-01-01"})
+	}
+	queries := RivalQueries(d, "001", 2026, time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC))
+	if len(queries) != 8 {
+		t.Fatal(queries)
+	}
+	for _, q := range queries {
+		if (q.Chrono != "E" && q.Chrono != "M") || ((q.Event == "100S" || q.Event == "3000L") && q.Pool != 25) {
+			t.Fatal(q)
+		}
 	}
 }

@@ -39,8 +39,9 @@ type RelayAdvice struct {
 	Warnings            []string         `json:"warnings"`
 }
 
-// Category eligibility follows the user's clarification of participation section 3.3:
-// non-premasters may enter lower categories; premaster swimmers may only enter +80.
+// Proposal policy chosen by the user, distinct from historical entry eligibility:
+// non-premasters are proposed in their natural category or its predecessor;
+// premaster swimmers may only enter +80, regardless of the quartet's total.
 func RecommendRelayCategories(ctx context.Context, d Data, q RelayRequest) (RelayAdvice, error) {
 	out := RelayAdvice{Season: SeasonLabel(q.SeasonStart), AgeAt: SeasonLabel(q.SeasonStart), Groups: []CategoryAdvice{}, Warnings: []string{"Propuestas alternativas e independientes. No son inscripciones ni garantizan medallas.", "La posición usa la mejor marca por club rival y categoría guardada; la cobertura puede ser incompleta."}}
 	if e := validateRelayFilter(q.Filter); e != nil {
@@ -73,6 +74,9 @@ func RecommendRelayCategories(ctx context.Context, d Data, q RelayRequest) (Rela
 	}
 	out.AgeAt = ageReference(q.SeasonStart)
 	for _, category := range RelayCategories() {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
 		if q.Category != 0 && q.Category != category {
 			continue
 		}
@@ -80,13 +84,24 @@ func RecommendRelayCategories(ctx context.Context, d Data, q RelayRequest) (Rela
 		candidate.Category = category
 		candidate.MinTotal = category
 		candidate.MaxTotal = 500
+		if category != 80 {
+			candidate.MaxTotal = relayProposalMaxTotal(category)
+		}
 		candidate.MinAge = 25
 		if category == 80 {
 			candidate.MinAge = 20
 		}
-		results, e := Optimize(ctx, d, candidate)
-		if e != nil {
-			return out, e
+		if err := validateRelayRequest(candidate); err != nil {
+			return out, err
+		}
+		ageEligible := relayAgeEligible(d, candidate)
+		results := []RelayResult{}
+		if ageEligible {
+			var e error
+			results, e = Optimize(ctx, d, candidate)
+			if e != nil {
+				return out, e
+			}
 		}
 		candidates, styles := relayCandidates(d, candidate)
 		coverage := []RelayReferenceCoverage{}
@@ -98,7 +113,7 @@ func RecommendRelayCategories(ctx context.Context, d Data, q RelayRequest) (Rela
 				seen[event] = true
 			}
 		}
-		out.Groups = append(out.Groups, CategoryAdvice{AgeEligible: relayAgeEligible(d, candidate), Category: category, Results: results, Rivals: comparableRelayRivals(d, candidate), Coverage: coverage})
+		out.Groups = append(out.Groups, CategoryAdvice{AgeEligible: ageEligible, Category: category, Results: results, Rivals: comparableRelayRivals(d, candidate), Coverage: coverage})
 	}
 	best := -1
 	for i, g := range out.Groups {
@@ -116,6 +131,27 @@ func RecommendRelayCategories(ctx context.Context, d Data, q RelayRequest) (Rela
 		out.Warnings = append(out.Warnings, "Sin recomendación competitiva de categoría: se necesita una composición propia y al menos tres clubes rivales comparables en el mismo grupo.")
 	}
 	return out, nil
+}
+
+// This is the user's proposal limit, not a restriction on historical entries.
+func relayProposalMaxTotal(category int) int {
+	categories := RelayCategories()
+	for i, c := range categories {
+		if c == category && i+2 < len(categories) {
+			return categories[i+2] - 1
+		}
+	}
+	return 500
+}
+
+func relayProposalAllowed(category, total int, premaster bool) bool {
+	if category == 0 { // Generic optimizer scenarios have no category policy.
+		return true
+	}
+	if premaster {
+		return category == 80
+	}
+	return total >= category && total <= relayProposalMaxTotal(category)
 }
 func betterOpportunity(a, b RelayResult) bool {
 	if a.Rank != b.Rank {
@@ -182,6 +218,7 @@ func relayAccepts(f Filter, m Mark) bool {
 // Age eligibility is independent of times. The small subset-sum state avoids
 // enumerating all quartets and preserves the upper bound and mixed composition.
 func relayAgeEligible(d Data, q RelayRequest) bool {
+	// Key = age sum * 10 + women * 2 + premaster presence (0/1).
 	var states [5]map[int]bool
 	for i := range states {
 		states[i] = map[int]bool{}
@@ -198,14 +235,19 @@ func relayAgeEligible(d Data, q RelayRequest) bool {
 		}
 		for n := 4; n >= 1; n-- {
 			for key := range states[n-1] {
-				sum, females := key/5+age, key%5+female
+				sum, females := key/10+age, (key%10)/2+female
+				premaster := key%2 == 1 || age < 25
 				if sum > q.MaxTotal || (q.Gender == "X" && females > 2) {
 					continue
 				}
-				if n == 4 && sum >= q.MinTotal && (q.Gender != "X" || females == 2) {
+				if n == 4 && sum >= q.MinTotal && (q.Gender != "X" || females == 2) && relayProposalAllowed(q.Category, sum, premaster) {
 					return true
 				}
-				states[n][sum*5+females] = true
+				flag := 0
+				if premaster {
+					flag = 1
+				}
+				states[n][sum*10+females*2+flag] = true
 			}
 		}
 	}

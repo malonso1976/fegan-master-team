@@ -10,6 +10,15 @@ import (
 
 // DeactivateSwimmers preserves profiles and marks; the whole selection commits together.
 func (s *Store) DeactivateSwimmers(ctx context.Context, licenses []string) (int, error) {
+	return s.setSwimmerTeamState(ctx, licenses, false)
+}
+
+// ActivateSwimmers makes existing selected profiles team members available for relays.
+func (s *Store) ActivateSwimmers(ctx context.Context, licenses []string) (int, error) {
+	return s.setSwimmerTeamState(ctx, licenses, true)
+}
+
+func (s *Store) setSwimmerTeamState(ctx context.Context, licenses []string, active bool) (int, error) {
 	if len(licenses) == 0 || len(licenses) > 1000 {
 		return 0, errors.New("selecciona entre 1 y 1000 nadadores")
 	}
@@ -38,14 +47,14 @@ func (s *Store) DeactivateSwimmers(ctx context.Context, licenses []string) (int,
 		if err = json.Unmarshal([]byte(raw), &swimmer); err != nil {
 			return 0, err
 		}
-		if !swimmer.Member && !swimmer.Available {
+		if swimmer.Member == active && swimmer.Available == active {
 			continue
 		}
 		if err = history(ctx, tx, "swimmers", "license", license); err != nil {
 			return 0, err
 		}
-		swimmer.Member = false
-		swimmer.Available = false
+		swimmer.Member = active
+		swimmer.Available = active
 		if err = saveSwimmer(ctx, tx, swimmer); err != nil {
 			return 0, err
 		}
