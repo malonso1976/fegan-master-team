@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marianoao/fegan-master-team/internal/domain"
+	"github.com/malonso1976/fegan-master-team/internal/domain"
 	"golang.org/x/net/html"
 )
 

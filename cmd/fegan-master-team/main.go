@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/marianoao/fegan-master-team/internal/store"
-	"github.com/marianoao/fegan-master-team/internal/web"
+	"github.com/malonso1976/fegan-master-team/internal/store"
+	"github.com/malonso1976/fegan-master-team/internal/web"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/marianoao/fegan-master-team/internal/domain"
+	"github.com/malonso1976/fegan-master-team/internal/domain"
 )
 
 func TestImportEditBackupAndIdentity(t *testing.T) {

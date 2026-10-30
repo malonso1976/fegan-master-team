@@ -177,3 +177,8 @@ El cálculo de elegibilidad sin marcas conserva en su estado suma, número de mu
 Por decisión del usuario, etiquetas vX.Y.Z y lanzamiento manual sobre una etiqueta existente preparan borradores, sin publicación automática. La etiqueta se resuelve una vez a SHA; comprobaciones nativas y compilación/ZIP usan ese commit. Python 3 estándar solo empaqueta, no es una dependencia de la aplicación ni de la compilación Go. Se conservan scripts/build.sh y seis plataformas/arquitecturas; cada ZIP contiene ejecutable y guía, con SHA256SUMS de los ZIP.
 
 Separación de privilegios: prepare/validate/package solo lectura; draft recibe escritura, descarga artefactos de la misma ejecución, verifica hashes y destino de etiqueta y crea borrador mediante gh. Sin checkout/código del repositorio en el trabajo con escritura, sin PAT, acciones fijadas a SHA/Node24. No crea etiquetas, sobrescribe releases ni publica. La firma/notarización e instaladores quedan pendientes; ejecución nativa de todos los binarios no se infiere de las pruebas en tres runners. Operación descrita en docs/releases.md.
+
+
+## Identidad del módulo (D52)
+
+Por petición del usuario (30/10/2026), el módulo principal es `github.com/malonso1976/fegan-master-team`; go.mod, imports internos y enlace actual de documentación en los ZIP usan ese espacio de nombres. No cambia la separación de componentes ni contratos/datos/dependencias. Las referencias históricas y rutas locales Java mantienen su procedencia; el renombrado no modifica el remoto Git.

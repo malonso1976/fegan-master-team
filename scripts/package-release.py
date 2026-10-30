@@ -45,7 +45,7 @@ Linux: sha256sum NOMBRE.zip
 Windows PowerShell: Get-FileHash NOMBRE.zip -Algorithm SHA256
 Compara el valor con la entrada del ZIP en SHA256SUMS.
 
-Documentación y código: https://github.com/marianoao/fegan-master-team
+Documentación y código: https://github.com/malonso1976/fegan-master-team
 """
 
 

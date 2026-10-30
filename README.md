@@ -31,6 +31,8 @@ Los cálculos son estimaciones sobre los datos guardados. La temporada va de oct
 
 ## Desarrollo y distribución
 
+El módulo Go es `github.com/malonso1976/fegan-master-team`.
+
 ```sh
 go test ./...
 go vet ./...

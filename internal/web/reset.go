@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/marianoao/fegan-master-team/internal/syncer"
+	"github.com/malonso1976/fegan-master-team/internal/syncer"
 )
 
 func (s *Server) validToken(r *http.Request) bool {

@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/marianoao/fegan-master-team/internal/domain"
-	"github.com/marianoao/fegan-master-team/internal/fegan"
+	"github.com/malonso1976/fegan-master-team/internal/domain"
+	"github.com/malonso1976/fegan-master-team/internal/fegan"
 )
 
 type relayComparison struct {

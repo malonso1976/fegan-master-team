@@ -71,6 +71,8 @@ Fecha de inicio: 26/10/2026. Toda decisión nueva debe añadirse aquí, y cualqu
 
 | D51 | Confirmada por usuario / implementada | Workflow de release por etiquetas vX.Y.Z y ejecución manual con etiqueta existente; crea borrador revisable, no publica. Seis ZIP con ejecutable/guía y SHA-256, sin datos locales. Validación en tres sistemas y compilación del SHA resuelto de la etiqueta, con Go de .tool-versions; Python estándar solo para empaquetado. Permisos de escritura aislados al trabajo draft, acciones SHA/Node24 y gh del runner; verifica hashes y etiqueta, sin sobrescribir releases ni crear tags. No añade firma/notarización ni ejecuta una release durante la implementación. |
 
+| D52 | Petición expresa del usuario / implementada 30/10/2026 | Renombrar el módulo principal a github.com/malonso1976/fegan-master-team y actualizar todos sus imports internos y el enlace actual en la guía de los ZIP. Conserva dependencias/go.sum, API, datos y rutas locales/referencias históricas a Java. No cambia remotos ni transfiere/publica repositorios. |
+
 ## Dudas para una siguiente validación funcional
 
 - D38, confirmada por el usuario e implementada (27/10/2026): la incidencia de relevos era de presentación. Listados, resultados recientes y vistas previas distinguen masculino/femenino/mixto y categoría de edad. Marcas añade filtros de categoría M/F/X y tipo individual/relevo; la búsqueda incluye la etiqueta. Elegir solo relevos desmarca y deshabilita mejores individuales para no ocultarlos; al volver a otros tipos se habilita, inicialmente desmarcada. No cambia el importador ni requiere reiniciar, migrar o reimportar datos. Véase [evidencias y comprobaciones](relay-import-investigation.md).

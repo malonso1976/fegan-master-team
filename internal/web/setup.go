@@ -3,8 +3,8 @@ package web
 import (
 	"context"
 	"errors"
-	"github.com/marianoao/fegan-master-team/internal/domain"
-	"github.com/marianoao/fegan-master-team/internal/fegan"
+	"github.com/malonso1976/fegan-master-team/internal/domain"
+	"github.com/malonso1976/fegan-master-team/internal/fegan"
 	"net/http"
 	"time"
 )

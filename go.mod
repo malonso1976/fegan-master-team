@@ -1,4 +1,4 @@
-module github.com/marianoao/fegan-master-team
+module github.com/malonso1976/fegan-master-team
 
 go 1.26.0
 

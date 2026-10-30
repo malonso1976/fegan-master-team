@@ -3,8 +3,8 @@ package web
 import (
 	"bytes"
 	"context"
-	"github.com/marianoao/fegan-master-team/internal/domain"
-	"github.com/marianoao/fegan-master-team/internal/store"
+	"github.com/malonso1976/fegan-master-team/internal/domain"
+	"github.com/malonso1976/fegan-master-team/internal/store"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"

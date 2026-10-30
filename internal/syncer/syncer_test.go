@@ -3,9 +3,9 @@ package syncer
 import (
 	"context"
 	"fmt"
-	"github.com/marianoao/fegan-master-team/internal/domain"
-	"github.com/marianoao/fegan-master-team/internal/fegan"
-	"github.com/marianoao/fegan-master-team/internal/store"
+	"github.com/malonso1976/fegan-master-team/internal/domain"
+	"github.com/malonso1976/fegan-master-team/internal/fegan"
+	"github.com/malonso1976/fegan-master-team/internal/store"
 	"io"
 	"net/http"
 	"os"
